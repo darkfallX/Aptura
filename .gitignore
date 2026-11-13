@@ -1,0 +1,28 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+
+# Local env & runtime DB
+.env
+*.sqlite3
+*.sqlite3-journal
+*.sqlite3-wal
+*.sqlite3-shm
+
+.next-preview/
+
+apps/web/.next-dev-*/
+data/*.lock
+data/market-captures/
+artifacts/runtime/
+artifacts/*.png
+artifacts/*.json
+artifacts/*.txt

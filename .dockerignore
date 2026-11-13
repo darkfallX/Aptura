@@ -1,0 +1,12 @@
+.env
+.venv/
+__pycache__/
+.pytest_cache/
+node_modules/
+apps/web/.next/
+apps/web/.next-dev-*/
+apps/web/out/
+artifacts/runtime/
+data/*.sqlite3
+data/*.sqlite3-journal
+.git/
