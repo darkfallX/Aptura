@@ -1,78 +1,61 @@
-# Aptura — OpenServ Hackathon 02 (Reppo Track) Submission Assets
+# Aptura — submission kit
 
----
+## One line
 
-## 1. Hackathon Submission Write-Up (Ready to Paste)
+Before your trading bot rewrites its own rules, Aptura checks the change on past data, gets a second opinion, and blocks it if it doesn't hold up.
 
-### Project Name
-**Aptura** — Adaptive AI Trading Strategy Supervisor
+## Write-up
 
-### Tagline
-*Trading bots adapt blindly. Aptura audits every weight shift through OpenServ SERV Reasoning, a zero-look-ahead 24-bar math gate, and asynchronous Reppo evaluation.*
+**Problem.** Trading bots that tune themselves change their own settings with nobody checking. When a market changes character, a bot sees a few losses and rewrites itself, often in the wrong direction and often at 3 a.m.
 
-### Problem
-Autonomous trading agents routinely drift out of sync when market regimes shift (e.g., from momentum breakouts to mean-reverting chop). Letting an LLM directly rewrite strategy parameters creates two failure modes: **silent overfitting** (chasing short-term noise or leaking look-ahead bias) and **unbounded risk** (jumping to extreme allocations without deterministic guardrails).
+**What Aptura does.** Every proposed change goes through three gates:
+1. **OpenServ SERV Reasoning** reads only what was known at that moment and proposes a bounded change, in strict JSON.
+2. **A math gate** re-runs the past 24 hours with fees and slippage. The change must beat the current mix, stay within 15–85% per strategy, move at most 25 points and respect an 18-bar cooldown. No model can override it.
+3. **Reppo** evaluators independently score the reasoning: ship, review or block.
 
-### Solution: 3-Gate Causal Supervision + Supervisor-as-a-Service
-Aptura separates **reasoning**, **numerical verification**, and **external peer evaluation** into three strict gates:
+**Feedback becomes improvement.** When a change is rejected, the gate's reason and Reppo's critique go back to SERV, which revises (or decides no change is justified), and the gate re-tests it. Every round is measured and returned. A revision can never replace a better earlier round.
 
-1. **Gate 1 — OpenServ SERV Reasoning (`SERVAnalyst`):** Inspects strictly past-only telemetry (matured shadow outcomes, EWMA strategy divergence, current weight split) and produces a schema-validated adaptation hypothesis, regime diagnosis, and bounded candidate weights (`SERV_GENERATED` vs `DETERMINISTIC_FALLBACK` clearly badged).
-2. **Gate 2 — Zero-Look-Ahead Deterministic Math & Risk Gate (`AdaptationEngine` + `validate_weights`):** Hard Python constraints always override model output—verifying `[15%, 85%]` bounds, cooldown spacing, and a counterfactual replay delta across the prior 24 closed candles using realistic next-open execution (`20 bps` fee + `15 bps` slippage per side). Weak or overfitting changes (tested against the adversarial `synthetic-noise-guard` scenario) are explicitly **rejected**.
-3. **Gate 3 — Independent Reppo Eval Panel (`ReppoClient`):** Submits sanitized reasoning traces asynchronously to the Reppo Eval Router (`POST /api/v1/agents/evals`, `taskType: "action"`), polls `GET /api/v1/agents/evals/{id}`, and attaches verifiable rubric scores plus routing decisions (`ship` / `review` / `block`).
+Other agents can call it directly with `POST /api/v1/supervise` and get back `SHIP`, `REVIEW` or `BLOCK`, plus every revision round.
 
-**Agent Ecosystem Utility:** Beyond its Next.js supervision terminal and live Coinbase market monitor, Aptura exposes **`GET /api/agent/manifest`** and **`POST /api/v1/supervise`** as a callable **Supervisor-as-a-Service** endpoint so any external OpenServ agent can submit candidate weight changes and receive a deterministic `SHIP | REVIEW | BLOCK` verdict before updating live strategy config.
+**Who pays.** Builders of self-tuning agents. Proposed pricing: math-gate check free, $0.05 with SERV revisions, $0.49 with a Reppo review (cost basis about $0.22). Not billed yet.
 
-### How We Use OpenServ & Reppo
-- **OpenServ SERV Reasoning:** Structured JSON Schema (`strict: true`) hypothesis synthesis over causal telemetry at `https://inference-api.openserv.ai/v1` with explicit schema-repair retry and full prompt/response provenance.
-- **Reppo Eval Router:** Live asynchronous agent evaluations at `https://eval.reppo.xyz/api/v1/agents/evals` auditing whether proposed parameter shifts are justified by past-only evidence and free of look-ahead bias.
-- **Unit Economics:** Running Gate 2 locally costs `$0.00`; escalating high-stakes configuration changes to the Reppo panel costs `440` credits (`~$0.22`) per audited decision rather than paying per candle tick.
+**Proof.** On 14 Nov 2026 we made real calls. SERV responses `chatcmpl-EkChHtNc5bZQ3s9HdXiEZgjYB2K1v` and `chatcmpl-EkChQRj5M4Jm7YM31ib3XhIzTpQ3o`. Reppo eval `cmwgqi5ji000107lauz6r6llv` scored 100/100, route ship, 440 credits. The math gate still blocked that change: +0.000% on past data.
 
-### Built With
-- **Backend:** Python 3.13, FastAPI, Pydantic v2, NumPy, Pandas, SQLite, httpx, Pytest
-- **Frontend:** Next.js 15 (App Router), React 19, TypeScript, Zod, Lucide icons
-- **Integrations:** OpenServ SERV Reasoning API, Reppo Eval Router API, Coinbase public market data
+**Results, losses included.** Adaptive beat fixed 50/50 on all 3 real datasets but made money on only 1. Cash beat it on 3 of 4. The gate rejected 26 of 34 changes. It let one noise-driven change through on the synthetic test, which cost 1%.
 
----
+**Feedback loop, live.** The bot asked for 95% reversal: −1.80%, blocked, Reppo 99 routed to review. Given that feedback, SERV revised to "keep current weights" (0.00%). On another call a 45/55 change passed the gate (+0.77%, Reppo 81, review). SERV's revision failed, and Aptura kept the passing round.
 
-## 2. Draft X (Twitter) Post
+**What we found.** Reppo gave a perfect score to reasoning that the numbers didn't support, so review scores can block a change but never approve one alone. Our first feedback loop returned a worse revision instead of a passing round. A live call caught it, and we fixed it and added a test. Nothing has shipped on a live call yet: every change was held back by the gate or by Reppo.
 
-> Trading bots shouldn't rewrite their own risk weights unchecked.
+**Built with.** Python 3.13, FastAPI, Pydantic, SQLite · Next.js 15, React 19, TypeScript · OpenServ SERV Reasoning · Reppo Eval Router · GeckoTerminal market data.
+
+## X post
+
+> Your trading bot just rewrote its own rules at 3am. Who checked?
 >
-> Introducing **Aptura** for @openservai Hackathon 02 (Reppo Track): an auditable 3-gate AI trading supervisor.
+> Aptura, for @openservai Hackathon 02 (Reppo track):
+> 1. SERV Reasoning proposes a bounded change
+> 2. A math gate replays the last 24h with fees. No model can override it
+> 3. Reppo reviews the reasoning
 >
-> 1. @openservai SERV Reasoning diagnoses strategy drift from causal telemetry
-> 2. Deterministic Python math gate tests `[15-85%]` bounds & 24-bar past-only replay (`$0.00`)
-> 3. Reppo Eval Router independently scores & routes (`ship / review / block`)
+> Rejected changes don't just die: the gate reason + Reppo critique go back to SERV, which revises, and the gate re-tests.
 >
-> Plus `POST /api/v1/supervise` so other OpenServ agents can call Aptura as a live risk governor before shipping config changes.
+> Our favourite result: Reppo scored a change 100/100. The numbers said +0.000%. Blocked.
 >
-> Paper trading research only. Zero wallets. Zero look-ahead.
-> #OpenServ #Reppo #AIAgents
+> Paper trading only. Receipts in the repo.
 
----
+## Demo script (3:00)
 
-## 3. Demo Video Script (~2 minutes 30 seconds)
+**0:00 Hook** (landing). "This is Kemi's bot. At 3 a.m. it wants to go 95% reversal. Nobody's awake to check." The hero receipt prints and gets stamped BLOCKED.
 
-**[0:00 – 0:25] Hook & Problem (Landing Page `/`):**
-- Start on `/` showing the Sage/Cream hero, live market preview, and the **3-Gate Architecture** strip.
-- Narration: *"Most AI trading demos let an LLM look at a chart and spit out trades—or silently tweak parameters without any proof it didn't overfit. Meet Aptura: an adaptive AI trading strategy supervisor built for OpenServ Hackathon 02 on the Reppo track."*
+**0:20 The three gates** (scroll). The receipt moves through three punches: SERV, the math gate, Reppo. "The math gate always has the final say."
 
-**[0:25 – 0:55] Causal Replay & Drift Detection (`/terminal?scenario=momentum-breakdown&autorun=1`):**
-- Click **Watch 3-Gate Demo →**. Show BONK/SOL advancing past the first drift event automatically, pausing cleanly right on an adaptation check.
-- Point out the four comparison equity tracks (**Adaptive**, **Fixed 50/50**, **Momentum**, **Cash**), deterministic scouts, and next-candle-open paper execution.
+**0:40 Watch it happen** (`/terminal?scenario=momentum-breakdown&autorun=1`). The replay runs, momentum breaks, drift is detected. Show the gates deciding, and a rejected change staying rejected.
 
-**[0:55 – 1:35] Live 3-Gate Audit Pipeline (SERV Reasoning -> Math Gate -> Reppo):**
-- Scroll to the **Three-Gate Adaptation Check** panel.
-- Click **Run Live SERV + Reppo Audit**.
-- Explain each card as it updates live:
-  - **Gate 1 (SERV Reasoning):** Generates a structured diagnosis and candidate mix with `SERV GENERATED` badge, model name, and measured latency.
-  - **Gate 2 (Causal Math Gate):** Verifies `[15–85%]` hard bounds, cooldown spacing, zero look-ahead, and 24-bar historical validation delta. Mention how `synthetic-noise-guard` rejects weak changes cleanly.
-  - **Gate 3 (Reppo Eval Panel):** Shows real Reppo evaluation ID (`QUEUED` -> auto-polling -> `COMPLETED`), rubric scores, credits charged, and `ship / review / block` verdict—clearly labeled as reasoning review, never portfolio P&L.
+**1:30 Receipts** (`/proof`). Show the real SERV IDs and the Reppo eval, then press *Check it yourself*: the browser re-hashes the candles and rechecks the limits. "Reppo said 100, ship. The numbers said nothing changed. Blocked."
 
-**[1:35 – 2:15] Supervisor-as-a-Service (`POST /api/v1/supervise` Workbench):**
-- Scroll to **Supervisor-as-a-Service**.
-- First run **Test rogue agent (95% reversal -> BLOCK)** and click **Call /api/v1/supervise**. Show the immediate red **`VERDICT: BLOCK`** from Gate 2 refusing to let an unbounded weight change ship.
-- Switch to **SERV Reasoning proposes bounded weights** and run again to show SERV synthesizing a bounded proposal and passing Gate 2 (`VERDICT: SHIP`).
+**2:10 Where we lose** (`/evaluation`). "Cash beat us on 3 of 4. Aptura's job is to block bad changes, not to promise profit."
 
-**[2:15 – 2:30] Live Market Feed & Closing Disclaimer (`/terminal`):**
-- Switch to the live Coinbase feed mode briefly to show live tick ingestion with persistent SQLite supervision state, `GET /api/agent/manifest`, and restate: *"Zero wallets, zero look-ahead, 100% auditable adaptation."*
+**2:35 Be the bot** (`/judge`). Drag to 5% momentum and send. The receipt prints round 0 BLOCK, then SERV's revision from the feedback. "Rejections become feedback. Any OpenServ agent can ask before it changes itself."
+
+**2:50 Close.** "No wallet. No real money. Every decision has a receipt."

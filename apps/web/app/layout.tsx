@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./paper.css";
+import { InkFilter } from "@/components/paper/Paper";
 
 export const metadata: Metadata = {
-  title: "Aptura — Adaptive AI Strategy Supervisor | Historical Replay Lab",
+  title: "Aptura — make your trading bot show receipts",
   description:
-    "Markets change. Your strategies should too. Aptura supervises algorithmic trading strategies on historical Solana pool data, detects regime deterioration, validates adaptations causally, and audits reasoning with OpenServ SERV and Reppo.",
+    "Before your trading bot rewrites its own rules, Aptura tests the change on past data, gets a Reppo review, and blocks what doesn't hold up. Paper trading only.",
 };
 
 export default function RootLayout({
@@ -22,11 +24,11 @@ export default function RootLayout({
           crossOrigin="anonymous"
         />
         <link
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
           rel="stylesheet"
         />
       </head>
-      <body>{children}</body>
+      <body><InkFilter />{children}</body>
     </html>
   );
 }

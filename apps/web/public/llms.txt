@@ -1,0 +1,38 @@
+# Aptura
+
+> Before a trading agent changes its own strategy, Aptura checks the change. OpenServ SERV Reasoning proposes, a past-data math gate tests, and Reppo reviews. Bad changes are blocked. Paper trading only: no wallets, no real money.
+
+## For agents
+
+- [Manifest](/api/agent/manifest): capabilities and costs, JSON
+- [Supervise](/api/v1/supervise): POST a proposed weight change, get SHIP, REVIEW or BLOCK
+- [Proof](/proof/live-proof.json): 4 live calls with SERV response IDs and settled Reppo evaluations, including feedback revisions, recorded 14 Nov 2026
+- [Evaluation](/proof/evaluation.json): full replays on 4 datasets, losses included
+- [Candles](/proof/candles/momentum-breakdown.csv): raw hourly candles used by the replay, hashes in evaluation.json
+
+## Request
+
+POST /api/v1/supervise
+{"agentName":"my-bot","datasetId":"momentum-breakdown","currentWeights":{"momentum":0.6,"reversal":0.4},"proposedWeights":{"momentum":0.05,"reversal":0.95},"runReppoReview":false,"maxRevisions":2}
+
+maxRevisions (0-2): when a change is rejected, the gate reason and Reppo critique go back to SERV for a revised proposal, which is re-tested. The response lists every round in "rounds" and the gain in "improvement".
+
+## Rules the gate enforces
+
+- Each strategy weight stays between 15% and 85%, and weights sum to 1
+- A single change moves a weight by at most 25 points
+- At least 18 bars between accepted changes
+- The change must beat the current mix by at least +0.06% on the 24 bars before the decision, after 20 bps fee and 15 bps slippage per side
+- Model output and reviewer scores never override these rules
+
+## Pricing (proposed, not billed yet)
+
+- Check: math gate only, free, rate limited
+- Reason: SERV + up to 2 revisions + math gate, $0.05 per change
+- Reviewed: plus Reppo review of gate-passing changes, $0.49 per change
+
+## Limits
+
+- Paper trading on historical and observed prices. No order is ever sent to an exchange.
+- Reppo scores the reasoning, not trading profit.
+- Results come from 3 real datasets of 199 hourly candles and 1 synthetic one: too small to claim an edge.

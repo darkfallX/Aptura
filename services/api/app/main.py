@@ -15,7 +15,9 @@ from functools import wraps
 from app.replay.comparisons import report
 from pathlib import Path
 from typing import Any
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+import os
+from collections import defaultdict, deque
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
@@ -34,6 +36,7 @@ from app.domain.models import (
     ReppoEvaluationRecord,
     SuperviseRequest,
     SuperviseResponse,
+    SuperviseRound,
 )
 from app.evaluation.clients import ReppoClient, SERVAnalyst
 from app.replay.comparisons import validate_weights
@@ -81,7 +84,7 @@ def create_app(
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
-        allow_credentials=True,
+        allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
     )
@@ -577,8 +580,20 @@ def create_app(
                     "id": "supervise_strategy_adaptation",
                     "method": "POST",
                     "endpoint": "/api/v1/supervise",
-                    "description": "Evaluate a proposed or SERV-synthesized strategy weight update through causal math gates and Reppo panel audit.",
+                    "description": "Evaluate a proposed or SERV-synthesized strategy weight update through causal math gates and Reppo panel audit. Set maxRevisions (0-2) to have rejection feedback sent back to SERV for a revised proposal.",
                     "returns": ["SHIP", "REVIEW", "BLOCK"],
+                },
+                {
+                    "id": "live_proof",
+                    "method": "GET",
+                    "endpoint": "/api/proof",
+                    "description": "Recorded real SERV response and Reppo evaluation IDs for independent checking.",
+                },
+                {
+                    "id": "evaluation_results",
+                    "method": "GET",
+                    "endpoint": "/api/evaluation",
+                    "description": "Adaptive vs fixed vs cash on every dataset, losses included.",
                 },
                 {
                     "id": "audit_replay_run",
@@ -598,12 +613,46 @@ def create_app(
                 "reppoTextEvalCredits": 440,
                 "reppoTextEvalUsd": 0.22,
             },
+            "pricing": {
+                "status": "proposed, not billed yet",
+                "tiers": [
+                    {"name": "check", "includes": "math gate only", "priceUsd": 0.0, "limit": "rate limited"},
+                    {"name": "reason", "includes": "SERV proposal + up to 2 feedback revisions + math gate", "priceUsd": 0.05},
+                    {"name": "reviewed", "includes": "everything above + Reppo review of each gate-passing candidate", "priceUsd": 0.49, "costBasisUsd": 0.22},
+                ],
+            },
         }
 
+    public_mode = os.environ.get("APTURA_PUBLIC", "").strip() == "1"
+    admin_key = os.environ.get("APTURA_ADMIN_KEY", "").strip()
+    per_minute = int(os.environ.get("APTURA_SUPERVISE_PER_MIN", "6") or 6)
+    hits: dict[str, deque] = defaultdict(deque)
+    hits_lock = threading.Lock()
+
+    def rate_limited(ip: str) -> bool:
+        now = time.time()
+        with hits_lock:
+            q = hits[ip]
+            while q and now - q[0] > 60:
+                q.popleft()
+            if len(q) >= per_minute:
+                return True
+            q.append(now)
+            return False
+
     @app.post("/api/v1/supervise", response_model=SuperviseResponse)
-    @serialized
-    def supervise_agent_adaptation(req: SuperviseRequest) -> SuperviseResponse:
-        """Supervisor-as-a-Service endpoint: Gate 1 (SERV) -> Gate 2 (Causal Math) -> Gate 3 (Reppo)."""
+    def supervise_agent_adaptation(req: SuperviseRequest, request: Request) -> SuperviseResponse:
+        """Supervisor-as-a-Service endpoint: Gate 1 (SERV) -> Gate 2 (Causal Math) -> Gate 3 (Reppo), with feedback revisions."""
+        ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip() or (request.client.host if request.client else "unknown")
+        if rate_limited(ip):
+            raise HTTPException(429, f"Rate limit: {per_minute} supervise calls per minute")
+        supplied_key = request.headers.get("x-aptura-admin-key", "")
+
+        def reppo_allowed(_req: SuperviseRequest) -> bool:
+            # Reppo reviews spend real credits. On a public deployment only the admin key may request them.
+            if not public_mode:
+                return True
+            return bool(admin_key) and supplied_key == admin_key
         try:
             meta, candles = data_catalog.get_dataset(req.datasetId)
         except KeyError as exc:
@@ -674,66 +723,160 @@ def create_app(
                 round(float(req.proposedWeights.get("momentum", 0.5)), 4),
                 round(float(req.proposedWeights.get("reversal", 0.5)), 4),
             ]
+            source = "caller"
         else:
             cand_w = [
                 round(float(serv_proposal.suggestedWeights["momentum"]), 4),
                 round(float(serv_proposal.suggestedWeights["reversal"]), 4),
             ]
+            source = "serv"
 
-        gate = session.adaptation_engine.validate_proposal(
-            current_idx=session.cursor,
-            old_weights=old_w,
-            proposed_weights=cand_w,
-            matured_outcomes=selection,
-            evidence_ids=evidence_ids,
-            cooldown_respected=True,
-            broker_validation=lambda b, c: validate_weights(session, b, c),
-        )
+        allow_reppo = req.runReppoReview and reppo_allowed(req)
+        rounds: list[SuperviseRound] = []
+        reppo_spent = 0
 
-        reppo_record: ReppoEvaluationRecord | None = None
-        if req.runReppoReview:
+        def run_gate(weights: list[float]):
+            return session.adaptation_engine.validate_proposal(
+                current_idx=session.cursor,
+                old_weights=old_w,
+                proposed_weights=weights,
+                matured_outcomes=selection,
+                evidence_ids=evidence_ids,
+                cooldown_respected=True,
+                broker_validation=lambda b, c: validate_weights(session, b, c),
+            )
+
+        def review(weights: list[float], proposal, gate_result, rnd: int) -> ReppoEvaluationRecord:
             ev = AdaptationEvent(
-                id=f"adapt_{run_id}_{session.cursor}",
+                id=f"adapt_{run_id}_{session.cursor}_r{rnd}",
                 runId=run_id,
                 detectedAt=observed_at,
                 candleIndex=session.cursor,
                 mechanism="REVIEWED_PROPOSAL",
                 status="PROPOSED",
                 fromVersion="v1.0.0",
-                proposedVersion="v1.1.0",
+                proposedVersion=f"v1.{rnd + 1}.0",
                 oldWeights=old_w,
-                proposedWeights=cand_w,
+                proposedWeights=weights,
                 triggerMetric=f"EWMA divergence {divergence:+.2f}% (Mom {mom_score:+.2f}% vs Rev {rev_score:+.2f}%)",
                 maturedSampleCount=len(selection),
                 momentumTrailingScore=mom_score,
                 reversalTrailingScore=rev_score,
                 evidenceIds=evidence_ids,
-                rationale=req.rationale or serv_proposal.hypothesis,
-                servProposal=serv_proposal,
-                validationResult=gate,
+                rationale=(req.rationale if rnd == 0 and source == "caller" else None) or proposal.hypothesis,
+                servProposal=proposal,
+                validationResult=gate_result,
             )
-            reppo_record = reppo.submit_evaluation(ev, meta.name)
-            storage_repo.save_evaluation(reppo_record)
+            rec = reppo.submit_evaluation(ev, meta.name)
+            if req.waitForReppo and rec.status == "PENDING":
+                deadline = time.time() + 240
+                while rec.status == "PENDING" and time.time() < deadline:
+                    time.sleep(4)
+                    rec = reppo.poll_evaluation(rec)
+            with mutation_lock:
+                storage_repo.save_evaluation(rec)
+            return rec
 
-        if not gate.passed:
-            verdict = "BLOCK"
-            summary = f"BLOCKED by deterministic math gate: {gate.summary}"
-        elif reppo_record and reppo_record.status == "SETTLED" and (reppo_record.route == "block" or reppo_record.decision == "reject"):
-            verdict = "BLOCK"
-            summary = f"BLOCKED by Reppo panel ({reppo_record.score}/100): {reppo_record.critique}"
-        elif reppo_record and reppo_record.status == "PENDING":
-            verdict = "REVIEW"
-            summary = f"Deterministic gate passed ({gate.pastSegmentDeltaPct:+.3f}%); awaiting Reppo eval {reppo_record.evalId}."
-        elif reppo_record and reppo_record.route == "review":
-            verdict = "REVIEW"
-            summary = f"Deterministic gate passed; Reppo routed to human review ({reppo_record.score}/100)."
-        elif serv_proposal.provenance != "SERV_GENERATED" or not serv_proposal.schemaValid:
-            verdict = "REVIEW"
-            summary = f"Deterministic gate passed ({gate.pastSegmentDeltaPct:+.3f}%); SERV Reasoning unavailable or schema-invalid."
-        else:
-            verdict = "SHIP"
-            summary = f"SHIP: SERV Reasoning + 24-bar causal math gate ({gate.pastSegmentDeltaPct:+.3f}%) passed."
+        def verdict_for(gate_result, rec, proposal) -> tuple[str, str]:
+            if not gate_result.passed:
+                return "BLOCK", f"BLOCKED by deterministic math gate: {gate_result.summary}"
+            if rec and rec.status == "SETTLED" and (rec.route == "block" or rec.decision == "reject"):
+                return "BLOCK", f"BLOCKED by Reppo panel ({rec.score}/100): {rec.critique}"
+            if rec and rec.status == "PENDING":
+                return "REVIEW", f"Deterministic gate passed ({gate_result.pastSegmentDeltaPct:+.3f}%); awaiting Reppo eval {rec.evalId}."
+            if rec and (rec.route == "review" or rec.decision == "revise"):
+                return "REVIEW", f"Deterministic gate passed; Reppo asked for revision ({rec.score}/100)."
+            if proposal.provenance != "SERV_GENERATED" or not proposal.schemaValid:
+                return "REVIEW", f"Deterministic gate passed ({gate_result.pastSegmentDeltaPct:+.3f}%); SERV Reasoning unavailable or schema-invalid."
+            return "SHIP", f"SHIP: SERV Reasoning + 24-bar causal math gate ({gate_result.pastSegmentDeltaPct:+.3f}%) passed."
 
+        proposal = serv_proposal
+        verdict, summary = "BLOCK", ""
+        candidates: list[tuple] = []  # (rank, round, verdict, summary, gate, rec, proposal, weights)
+        for rnd in range(req.maxRevisions + 1):
+            if rnd > 0:
+                prev = rounds[-1]
+                # Fallback when SERV is unavailable: halve the step back toward the current weights.
+                # Never searched or tuned on the validation window.
+                half = normalize_and_bound_weights(
+                    old_w[0] + (cand_w[0] - old_w[0]) / 2, old_w[1] + (cand_w[1] - old_w[1]) / 2
+                )
+                feedback_ctx = dict(extra_ctx)
+                feedback_ctx.update({
+                    "revisionRound": rnd,
+                    "rejectedWeights": {"momentum": cand_w[0], "reversal": cand_w[1]},
+                    "gateFeedback": prev.gateSummary,
+                    "gatePastWindowDeltaPct": prev.pastWindowDeltaPct,
+                    "gateRequiredDeltaPct": 0.06,
+                    "reviewerFeedback": prev.reppoCritique,
+                    "reviewerRoute": prev.reppoRoute,
+                    "instruction": (
+                        "Your previous proposal was not accepted. Use the gate and reviewer feedback above to "
+                        "propose a revised bounded change. If the evidence does not support any change, return "
+                        "the current weights unchanged."
+                    ),
+                })
+                proposal = serv.generate_proposal(
+                    observed_at=observed_at,
+                    dataset_name=meta.name,
+                    old_weights=old_w,
+                    candidate_weights=[half[0], half[1]],
+                    momentum_score=mom_score,
+                    reversal_score=rev_score,
+                    matured_count=len(selection),
+                    allowed_evidence_ids=evidence_ids,
+                    extra_context=feedback_ctx,
+                )
+                cand_w = [
+                    round(float(proposal.suggestedWeights["momentum"]), 4),
+                    round(float(proposal.suggestedWeights["reversal"]), 4),
+                ]
+                source = "serv-revision"
+
+            gate = run_gate(cand_w)
+            rec: ReppoEvaluationRecord | None = None
+            # Round 0 keeps the original contract. Revisions are only sent to Reppo once they pass
+            # the math gate, so no credits go to candidates that cannot ship anyway.
+            if allow_reppo and (rnd == 0 or gate.passed):
+                rec = review(cand_w, proposal, gate, rnd)
+                reppo_spent += rec.creditsCharged or 0
+            verdict, summary = verdict_for(gate, rec, proposal)
+            rounds.append(SuperviseRound(
+                round=rnd,
+                source=source,
+                weights={"momentum": cand_w[0], "reversal": cand_w[1]},
+                servProvenance=proposal.provenance,
+                servResponseId=proposal.responseId,
+                hypothesis=proposal.hypothesis,
+                gatePassed=gate.passed,
+                gateSummary=gate.summary,
+                pastWindowDeltaPct=gate.pastSegmentDeltaPct,
+                reppoEvalId=rec.evalId if rec else None,
+                reppoScore=rec.score if rec else None,
+                reppoRoute=rec.route if rec else None,
+                reppoCritique=rec.critique if rec else None,
+                verdict=verdict,
+            ))
+            unchanged = abs(cand_w[0] - old_w[0]) < 1e-9
+            if rnd > 0 and unchanged:
+                verdict, summary = "BLOCK", "No change: after the feedback, SERV recommended keeping the current weights."
+                rounds[-1].verdict = verdict
+            rank = 2 if verdict == "SHIP" else 1 if (verdict == "REVIEW" and gate.passed) else 0
+            candidates.append((rank, rnd, verdict, summary, gate, rec, proposal, list(cand_w)))
+            if rnd > 0 and unchanged:
+                break
+            reviewer_wants_revision = rec is not None and rec.status == "SETTLED" and (
+                rec.route in ("review", "block") or rec.decision in ("revise", "reject")
+            )
+            if not (verdict == "BLOCK" or reviewer_wants_revision):
+                break
+
+        # A revision never replaces a better earlier round: SHIP > gate-passing REVIEW > BLOCK, latest wins ties.
+        best = max(candidates, key=lambda c: (c[0], c[1]))
+        _, chosen_round, verdict, summary, final_gate, final_rec, proposal, cand_w = best
+        if chosen_round != len(rounds) - 1:
+            summary = f"{summary} (round {chosen_round} kept: no later revision did better)"
+        first, last = rounds[0], rounds[chosen_round]
         return SuperviseResponse(
             requestId=run_id,
             agentName=req.agentName,
@@ -744,18 +887,61 @@ def create_app(
             decision=verdict,
             currentWeights={"momentum": old_w[0], "reversal": old_w[1]},
             proposedWeights={"momentum": cand_w[0], "reversal": cand_w[1]},
-            servProposal=serv_proposal,
-            deterministicGate=gate,
-            reppoEvaluation=reppo_record,
+            servProposal=proposal,
+            deterministicGate=final_gate,
+            reppoEvaluation=final_rec,
+            rounds=rounds,
+            improvement={
+                "rounds": len(rounds),
+                "chosenRound": chosen_round,
+                "firstVerdict": first.verdict,
+                "finalVerdict": verdict,
+                "firstPastWindowDeltaPct": first.pastWindowDeltaPct,
+                "finalPastWindowDeltaPct": last.pastWindowDeltaPct,
+                "deltaGainPct": round(last.pastWindowDeltaPct - first.pastWindowDeltaPct, 4),
+            },
             unitEconomics={
                 "localMathGateUsd": 0.0,
-                "servReasoningModel": serv_proposal.modelUsed,
-                "servLatencyMs": serv_proposal.latencyMs,
-                "reppoCreditsCharged": reppo_record.creditsCharged if reppo_record else 0,
-                "reppoEstimatedUsd": 0.22 if req.runReppoReview else 0.0,
+                "servReasoningModel": proposal.modelUsed,
+                "servLatencyMs": proposal.latencyMs,
+                "servCalls": len(rounds) if serv.is_configured() else 0,
+                "reppoCreditsCharged": reppo_spent,
+                "reppoReviewAllowed": allow_reppo,
             },
             summary=summary,
         )
+
+    repo_root = Path(__file__).resolve().parents[3]
+
+    def read_json(relative: str) -> dict[str, Any]:
+        path = repo_root / relative
+        if not path.exists():
+            raise HTTPException(404, f"{relative} has not been generated yet")
+        import json
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    @app.get("/api/proof")
+    def get_live_proof() -> dict[str, Any]:
+        """Recorded real SERV + Reppo round trip (scripts/run_live_proof.py)."""
+        return read_json("data/proof/live-proof.json")
+
+    @app.get("/api/evaluation")
+    def get_evaluation_results() -> dict[str, Any]:
+        """Full-replay results for every dataset, failures included (scripts/run_evaluation.py)."""
+        return read_json("data/evaluation/results.json")
+
+    @app.get("/api/proof/candles/{dataset_id}")
+    def get_proof_candles(dataset_id: str) -> dict[str, Any]:
+        """Raw candles + hash so the browser can recompute the gate itself."""
+        try:
+            meta, candles = data_catalog.get_dataset(dataset_id)
+        except KeyError as exc:
+            raise HTTPException(404, str(exc)) from exc
+        csv = "index,observedAt,open,high,low,close\n" + "\n".join(
+            f"{c.index},{c.observedAt},{c.open!r},{c.high!r},{c.low!r},{c.close!r}" for c in candles
+        )
+        return {"datasetId": meta.id, "name": meta.name, "source": meta.source, "sourceUrl": meta.sourceUrl,
+                "synthetic": meta.isSynthetic, "sha256": hashlib.sha256(csv.encode()).hexdigest(), "csv": csv}
 
     @app.get("/api/download/aptura.zip")
     @serialized

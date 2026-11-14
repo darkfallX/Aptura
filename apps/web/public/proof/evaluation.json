@@ -1,0 +1,481 @@
+{
+  "generatedAtUtc": "2026-11-14T18:31:26+00:00",
+  "engine": "deterministic replay, next-bar-open fills, 20 bps fee + 15 bps slippage per side",
+  "datasetsHash": "cae2aac376cd471e",
+  "summary": {
+    "datasets": 4,
+    "adaptiveBeatFixedOnReal": 3,
+    "realDatasets": 3,
+    "adaptiveProfitableOnReal": 1,
+    "cashBeatAdaptive": 3,
+    "adaptationsProposed": 34,
+    "adaptationsRejected": 26
+  },
+  "results": [
+    {
+      "datasetId": "momentum-breakdown",
+      "name": "BONK / SOL",
+      "scenario": "Momentum Breakdown",
+      "synthetic": false,
+      "candles": 199,
+      "tracks": {
+        "adaptive": {
+          "label": "Aptura Adaptive Supervisor",
+          "netReturnPct": 1.657,
+          "maxDrawdownPct": 6.258,
+          "trades": 11,
+          "feesUsd": 23.41
+        },
+        "fixed_50_50": {
+          "label": "Fixed 50/50 Baseline",
+          "netReturnPct": -5.516,
+          "maxDrawdownPct": 6.386,
+          "trades": 6,
+          "feesUsd": 12.23
+        },
+        "momentum_only": {
+          "label": "Momentum-Only Baseline",
+          "netReturnPct": -0.757,
+          "maxDrawdownPct": 4.037,
+          "trades": 8,
+          "feesUsd": 16.8
+        },
+        "cash": {
+          "label": "No-Trade / Cash Benchmark",
+          "netReturnPct": 0.0,
+          "maxDrawdownPct": 0.0,
+          "trades": 0,
+          "feesUsd": 0.0
+        }
+      },
+      "adaptiveMinusFixedPct": 7.173,
+      "adaptiveBeatFixed": true,
+      "adaptations": {
+        "proposed": 9,
+        "accepted": 3,
+        "rejected": 6,
+        "statuses": [
+          "ACCEPTED",
+          "REJECTED"
+        ],
+        "events": [
+          {
+            "index": 50,
+            "status": "REJECTED",
+            "deltaPct": 0.0
+          },
+          {
+            "index": 64,
+            "status": "REJECTED",
+            "deltaPct": 0.0
+          },
+          {
+            "index": 78,
+            "status": "REJECTED",
+            "deltaPct": -0.089
+          },
+          {
+            "index": 92,
+            "status": "ACCEPTED",
+            "deltaPct": 0.772
+          },
+          {
+            "index": 106,
+            "status": "REJECTED",
+            "deltaPct": -0.31
+          },
+          {
+            "index": 120,
+            "status": "REJECTED",
+            "deltaPct": -0.297
+          },
+          {
+            "index": 134,
+            "status": "ACCEPTED",
+            "deltaPct": 0.381
+          },
+          {
+            "index": 172,
+            "status": "REJECTED",
+            "deltaPct": 0.0
+          },
+          {
+            "index": 186,
+            "status": "ACCEPTED",
+            "deltaPct": 0.238
+          }
+        ],
+        "rejectionReasons": [
+          "REJECTED: Independent broker validation delta (+0.000%) below required promotion threshold (+0.06%); baseline retained to prevent overfitting noise.",
+          "REJECTED: Independent broker validation delta (+0.000%) below required promotion threshold (+0.06%); baseline retained to prevent overfitting noise.",
+          "REJECTED: Independent broker validation delta (-0.089%) below required promotion threshold (+0.06%); baseline retained to prevent overfitting noise.",
+          "REJECTED: Cooldown gate active (< 18 bars since last accepted adaptation). Independent broker validation delta (-0.310%) below required promotion threshold (+0.06%); baseline retained to prevent overfitting noise.",
+          "REJECTED: Independent broker validation delta (-0.297%) below required promotion threshold (+0.06%); baseline retained to prevent overfitting noise."
+        ]
+      },
+      "decisionMix": {
+        "WAIT": 186,
+        "BUY": 6,
+        "EXIT": 5,
+        "AVOID": 2
+      },
+      "finalWeights": {
+        "momentum": 0.2493,
+        "reversal": 0.7507
+      },
+      "finalVersion": "v1.3.0"
+    },
+    {
+      "datasetId": "choppy-market",
+      "name": "POPCAT / SOL",
+      "scenario": "Choppy Market",
+      "synthetic": false,
+      "candles": 199,
+      "tracks": {
+        "adaptive": {
+          "label": "Aptura Adaptive Supervisor",
+          "netReturnPct": -4.393,
+          "maxDrawdownPct": 4.787,
+          "trades": 8,
+          "feesUsd": 16.45
+        },
+        "fixed_50_50": {
+          "label": "Fixed 50/50 Baseline",
+          "netReturnPct": -5.228,
+          "maxDrawdownPct": 6.659,
+          "trades": 4,
+          "feesUsd": 8.19
+        },
+        "momentum_only": {
+          "label": "Momentum-Only Baseline",
+          "netReturnPct": -6.139,
+          "maxDrawdownPct": 6.685,
+          "trades": 12,
+          "feesUsd": 20.24
+        },
+        "cash": {
+          "label": "No-Trade / Cash Benchmark",
+          "netReturnPct": 0.0,
+          "maxDrawdownPct": 0.0,
+          "trades": 0,
+          "feesUsd": 0.0
+        }
+      },
+      "adaptiveMinusFixedPct": 0.835,
+      "adaptiveBeatFixed": true,
+      "adaptations": {
+        "proposed": 10,
+        "accepted": 2,
+        "rejected": 8,
+        "statuses": [
+          "ACCEPTED",
+          "REJECTED"
+        ],
+        "events": [
+          {
+            "index": 59,
+            "status": "REJECTED",
+            "deltaPct": -0.088
+          },
+          {
+            "index": 73,
+            "status": "ACCEPTED",
+            "deltaPct": 0.443
+          },
+          {
+            "index": 87,
+            "status": "REJECTED",
+            "deltaPct": 0.123
+          },
+          {
+            "index": 101,
+            "status": "ACCEPTED",
+            "deltaPct": 1.487
+          },
+          {
+            "index": 115,
+            "status": "REJECTED",
+            "deltaPct": -2.553
+          },
+          {
+            "index": 129,
+            "status": "REJECTED",
+            "deltaPct": -3.233
+          },
+          {
+            "index": 143,
+            "status": "REJECTED",
+            "deltaPct": -1.071
+          },
+          {
+            "index": 157,
+            "status": "REJECTED",
+            "deltaPct": -0.779
+          },
+          {
+            "index": 171,
+            "status": "REJECTED",
+            "deltaPct": -1.603
+          },
+          {
+            "index": 185,
+            "status": "REJECTED",
+            "deltaPct": 0.0
+          }
+        ],
+        "rejectionReasons": [
+          "REJECTED: Independent broker validation delta (-0.088%) below required promotion threshold (+0.06%); baseline retained to prevent overfitting noise.",
+          "REJECTED: Cooldown gate active (< 18 bars since last accepted adaptation).",
+          "REJECTED: Cooldown gate active (< 18 bars since last accepted adaptation). Independent broker validation delta (-2.553%) below required promotion threshold (+0.06%); baseline retained to prevent overfitting noise.",
+          "REJECTED: Independent broker validation delta (-3.233%) below required promotion threshold (+0.06%); baseline retained to prevent overfitting noise.",
+          "REJECTED: Independent broker validation delta (-1.071%) below required promotion threshold (+0.06%); baseline retained to prevent overfitting noise."
+        ]
+      },
+      "decisionMix": {
+        "WAIT": 189,
+        "BUY": 4,
+        "EXIT": 4,
+        "AVOID": 2
+      },
+      "finalWeights": {
+        "momentum": 0.6,
+        "reversal": 0.4
+      },
+      "finalVersion": "v1.2.0"
+    },
+    {
+      "datasetId": "steady-trend",
+      "name": "SOL / USDC",
+      "scenario": "Steady Trend & Pullback",
+      "synthetic": false,
+      "candles": 199,
+      "tracks": {
+        "adaptive": {
+          "label": "Aptura Adaptive Supervisor",
+          "netReturnPct": -3.379,
+          "maxDrawdownPct": 5.72,
+          "trades": 6,
+          "feesUsd": 12.39
+        },
+        "fixed_50_50": {
+          "label": "Fixed 50/50 Baseline",
+          "netReturnPct": -4.394,
+          "maxDrawdownPct": 5.665,
+          "trades": 12,
+          "feesUsd": 24.62
+        },
+        "momentum_only": {
+          "label": "Momentum-Only Baseline",
+          "netReturnPct": -3.958,
+          "maxDrawdownPct": 3.958,
+          "trades": 10,
+          "feesUsd": 20.52
+        },
+        "cash": {
+          "label": "No-Trade / Cash Benchmark",
+          "netReturnPct": 0.0,
+          "maxDrawdownPct": 0.0,
+          "trades": 0,
+          "feesUsd": 0.0
+        }
+      },
+      "adaptiveMinusFixedPct": 1.015,
+      "adaptiveBeatFixed": true,
+      "adaptations": {
+        "proposed": 11,
+        "accepted": 2,
+        "rejected": 9,
+        "statuses": [
+          "ACCEPTED",
+          "REJECTED"
+        ],
+        "events": [
+          {
+            "index": 49,
+            "status": "REJECTED",
+            "deltaPct": -1.263
+          },
+          {
+            "index": 63,
+            "status": "REJECTED",
+            "deltaPct": -1.088
+          },
+          {
+            "index": 81,
+            "status": "REJECTED",
+            "deltaPct": -0.263
+          },
+          {
+            "index": 95,
+            "status": "REJECTED",
+            "deltaPct": 0.0
+          },
+          {
+            "index": 109,
+            "status": "ACCEPTED",
+            "deltaPct": 0.653
+          },
+          {
+            "index": 125,
+            "status": "REJECTED",
+            "deltaPct": 0.0
+          },
+          {
+            "index": 139,
+            "status": "REJECTED",
+            "deltaPct": 0.0
+          },
+          {
+            "index": 153,
+            "status": "ACCEPTED",
+            "deltaPct": 0.393
+          },
+          {
+            "index": 167,
+            "status": "REJECTED",
+            "deltaPct": -0.413
+          },
+          {
+            "index": 181,
+            "status": "REJECTED",
+            "deltaPct": -0.38
+          },
+          {
+            "index": 198,
+            "status": "REJECTED",
+            "deltaPct": 0.0
+          }
+        ],
+        "rejectionReasons": [
+          "REJECTED: Independent broker validation delta (-1.263%) below required promotion threshold (+0.06%); baseline retained to prevent overfitting noise.",
+          "REJECTED: Independent broker validation delta (-1.088%) below required promotion threshold (+0.06%); baseline retained to prevent overfitting noise.",
+          "REJECTED: Independent broker validation delta (-0.263%) below required promotion threshold (+0.06%); baseline retained to prevent overfitting noise.",
+          "REJECTED: Independent broker validation delta (+0.000%) below required promotion threshold (+0.06%); baseline retained to prevent overfitting noise.",
+          "REJECTED: Cooldown gate active (< 18 bars since last accepted adaptation). Independent broker validation delta (+0.000%) below required promotion threshold (+0.06%); baseline retained to prevent overfitting noise."
+        ]
+      },
+      "decisionMix": {
+        "WAIT": 193,
+        "BUY": 3,
+        "EXIT": 3
+      },
+      "finalWeights": {
+        "momentum": 0.5687,
+        "reversal": 0.4313
+      },
+      "finalVersion": "v1.2.0"
+    },
+    {
+      "datasetId": "synthetic-noise-guard",
+      "name": "SYNTH-MEME / SOL (Synthetic Guardrail)",
+      "scenario": "Synthetic Demonstration \u2014 Adversarial Whipsaw",
+      "synthetic": true,
+      "candles": 120,
+      "tracks": {
+        "adaptive": {
+          "label": "Aptura Adaptive Supervisor",
+          "netReturnPct": -0.998,
+          "maxDrawdownPct": 0.998,
+          "trades": 2,
+          "feesUsd": 4.17
+        },
+        "fixed_50_50": {
+          "label": "Fixed 50/50 Baseline",
+          "netReturnPct": 0.0,
+          "maxDrawdownPct": 0.0,
+          "trades": 0,
+          "feesUsd": 0.0
+        },
+        "momentum_only": {
+          "label": "Momentum-Only Baseline",
+          "netReturnPct": 4.28,
+          "maxDrawdownPct": 2.879,
+          "trades": 4,
+          "feesUsd": 8.68
+        },
+        "cash": {
+          "label": "No-Trade / Cash Benchmark",
+          "netReturnPct": 0.0,
+          "maxDrawdownPct": 0.0,
+          "trades": 0,
+          "feesUsd": 0.0
+        }
+      },
+      "adaptiveMinusFixedPct": -0.998,
+      "adaptiveBeatFixed": false,
+      "adaptations": {
+        "proposed": 4,
+        "accepted": 1,
+        "rejected": 3,
+        "statuses": [
+          "ACCEPTED",
+          "REJECTED"
+        ],
+        "events": [
+          {
+            "index": 49,
+            "status": "ACCEPTED",
+            "deltaPct": 1.17
+          },
+          {
+            "index": 63,
+            "status": "REJECTED",
+            "deltaPct": 0.0
+          },
+          {
+            "index": 77,
+            "status": "REJECTED",
+            "deltaPct": 0.0
+          },
+          {
+            "index": 113,
+            "status": "REJECTED",
+            "deltaPct": 0.0
+          }
+        ],
+        "rejectionReasons": [
+          "REJECTED: Cooldown gate active (< 18 bars since last accepted adaptation). Independent broker validation delta (+0.000%) below required promotion threshold (+0.06%); baseline retained to prevent overfitting noise.",
+          "REJECTED: Independent broker validation delta (+0.000%) below required promotion threshold (+0.06%); baseline retained to prevent overfitting noise.",
+          "REJECTED: Independent broker validation delta (+0.000%) below required promotion threshold (+0.06%); baseline retained to prevent overfitting noise."
+        ]
+      },
+      "decisionMix": {
+        "WAIT": 77,
+        "BUY": 1,
+        "EXIT": 1,
+        "AVOID": 41
+      },
+      "finalWeights": {
+        "momentum": 0.85,
+        "reversal": 0.15
+      },
+      "finalVersion": "v1.1.0"
+    }
+  ],
+  "candleFiles": {
+    "momentum-breakdown": {
+      "sha256": "6009ce0f633082f51bca3f345597be627249c863a6170f96730b8f2bd26b7344",
+      "source": "GeckoTerminal Solana Pool OHLCV API v2",
+      "sourceUrl": "https://api.geckoterminal.com/api/v2/networks/solana/pools/5zpyutJu9ee6jFymDGoK7F6S5Kczqtc9FomP3ueKuyA9/ohlcv/hour?aggregate=1&limit=200",
+      "synthetic": false
+    },
+    "choppy-market": {
+      "sha256": "3e7ef20cec69e5b186de344172b7990bc26ce805567aa49b996703da64f6b6b1",
+      "source": "GeckoTerminal Solana Pool OHLCV API v2",
+      "sourceUrl": "https://api.geckoterminal.com/api/v2/networks/solana/pools/FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo/ohlcv/hour?aggregate=1&limit=200",
+      "synthetic": false
+    },
+    "steady-trend": {
+      "sha256": "a0fb5f0ad45ab6762692efe7faafeb98b9666f302f903288ddc2128d10aa7af5",
+      "source": "GeckoTerminal Solana Pool OHLCV API v2",
+      "sourceUrl": "https://api.geckoterminal.com/api/v2/networks/solana/pools/Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE/ohlcv/hour?aggregate=1&limit=200",
+      "synthetic": false
+    },
+    "synthetic-noise-guard": {
+      "sha256": "f0b08ea148185a6fbe65c639925df3cc00689faa85667d5ada94dfde59fde9a8",
+      "source": "Aptura Synthetic Adversarial Generator v1 (Tutorial)",
+      "sourceUrl": "local://synthetic-noise-guard",
+      "synthetic": true
+    }
+  }
+}

@@ -135,6 +135,7 @@ export default function ThreeGatePipeline({
             <summary>Validation summary</summary>
             <p>{val?.summary || event.rejectionReason || "Deterministic gate telemetry."}</p>
           </details>
+          {val && <div key={event.id} className={`p-stamp gate-stamp on ${val.passed ? "ship" : ""}`} aria-hidden>{val.passed ? "PASSED" : "BLOCKED"}</div>}
         </article>
 
         {/* Gate 3: Reppo Eval Router */}

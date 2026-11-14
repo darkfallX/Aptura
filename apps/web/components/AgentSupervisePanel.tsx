@@ -116,7 +116,8 @@ export default function AgentSupervisePanel({
       )}
 
       {result && (
-        <div className="supervise-result">
+        <div className="supervise-result" key={result.requestId}>
+          <div className={`p-stamp gate-stamp on ${result.decision === "SHIP" ? "ship" : ""}`} aria-hidden>{result.decision === "BLOCK" ? "BLOCKED" : result.decision}</div>
           <div className="supervise-result-top">
             <span
               className={`badge ${

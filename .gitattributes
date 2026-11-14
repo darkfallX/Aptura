@@ -1,0 +1,4 @@
+# Proof files are hashed byte-for-byte; never convert line endings.
+apps/web/public/proof/** -text
+data/proof/** -text
+data/evaluation/** -text

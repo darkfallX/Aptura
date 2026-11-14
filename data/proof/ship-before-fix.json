@@ -1,0 +1,104 @@
+{
+  "note": "ship case recorded before the best-round fix: a gate-passing round 0 was replaced by a worse revision",
+  "recordedAtUtc": "2026-11-14T20:08:41+00:00",
+  "cases": [
+    {
+      "case": "ship",
+      "title": "A modest change that holds up",
+      "requestId": "sup_f0e5d6d45403",
+      "agentName": "kemi-bonk-bot",
+      "dataset": "BONK / SOL",
+      "observedAtUtc": "2026-11-03T19:00:00Z",
+      "decision": "BLOCK",
+      "summary": "BLOCKED by deterministic math gate: REJECTED: Independent broker validation delta (-0.090%) below required promotion threshold (+0.06%); baseline retained to prevent overfitting noise.",
+      "currentWeights": {
+        "momentum": 0.6,
+        "reversal": 0.4
+      },
+      "proposedWeights": {
+        "momentum": 0.7,
+        "reversal": 0.3
+      },
+      "serv": {
+        "provenance": "SERV_GENERATED",
+        "model": "gpt-5.6-sol",
+        "responseId": "chatcmpl-EkEL8tYcZndr9PKPf0LBXGyfSfEE7",
+        "latencyMs": 6976,
+        "schemaValid": true,
+        "regime": "TRENDING",
+        "hypothesis": "Observed shadow outcomes favor momentum over reversal; a modest increase in momentum exposure is more consistent with the available telemetry than the rejected reversal-heavy allocation, while retaining meaningful reversal capacity.",
+        "suggestedWeights": {
+          "momentum": 0.7,
+          "reversal": 0.3
+        },
+        "uncertainties": [
+          "The matured sample of 38 outcomes remains limited.",
+          "The persistence of the observed momentum advantage is unknown.",
+          "The validation result favoring the rejected allocation conflicts with the strategy-level shadow telemetry, so confidence is moderate."
+        ]
+      },
+      "gate": {
+        "passed": false,
+        "weightsInBounds": true,
+        "sampleSizeSufficient": true,
+        "noFutureLeakage": true,
+        "cooldownRespected": true,
+        "evidenceVerified": true,
+        "pastSegmentCandidateReturnPct": -0.8604,
+        "pastSegmentBaselineReturnPct": -0.7709,
+        "pastSegmentDeltaPct": -0.0895,
+        "validationWindowBars": 24,
+        "summary": "REJECTED: Independent broker validation delta (-0.090%) below required promotion threshold (+0.06%); baseline retained to prevent overfitting noise."
+      },
+      "reppo": null,
+      "rounds": [
+        {
+          "round": 0,
+          "source": "caller",
+          "weights": {
+            "momentum": 0.45,
+            "reversal": 0.55
+          },
+          "servProvenance": "SERV_GENERATED",
+          "servResponseId": "chatcmpl-EkEIzvclQ2dEMux0L28XWQYXi3bEb",
+          "hypothesis": "Recent matured outcomes consistently favor momentum over reversal, indicating directional persistence and supporting a moderate increase in momentum weight rather than the proposed reversal tilt.",
+          "gatePassed": true,
+          "gateSummary": "PASSED: Candidate weights (45/55) beat baseline (60/40) by +0.771% after costs on 24 separate validation bars.",
+          "pastWindowDeltaPct": 0.7709,
+          "reppoEvalId": "cmwgu6f8o000408jwns9arakf",
+          "reppoScore": 81.0,
+          "reppoRoute": "review",
+          "reppoCritique": "The score of 81 reflects a medium-confidence acceptance, driven by strong performance in scope, reversibility, and safety, but lower correctness due to uncertainties in the rationale and sample size limitations. The submission passed all gates and will proceed to review.",
+          "verdict": "REVIEW"
+        },
+        {
+          "round": 1,
+          "source": "serv-revision",
+          "weights": {
+            "momentum": 0.7,
+            "reversal": 0.3
+          },
+          "servProvenance": "SERV_GENERATED",
+          "servResponseId": "chatcmpl-EkEL8tYcZndr9PKPf0LBXGyfSfEE7",
+          "hypothesis": "Observed shadow outcomes favor momentum over reversal; a modest increase in momentum exposure is more consistent with the available telemetry than the rejected reversal-heavy allocation, while retaining meaningful reversal capacity.",
+          "gatePassed": false,
+          "gateSummary": "REJECTED: Independent broker validation delta (-0.090%) below required promotion threshold (+0.06%); baseline retained to prevent overfitting noise.",
+          "pastWindowDeltaPct": -0.0895,
+          "reppoEvalId": null,
+          "reppoScore": null,
+          "reppoRoute": null,
+          "reppoCritique": null,
+          "verdict": "BLOCK"
+        }
+      ],
+      "improvement": {
+        "rounds": 2,
+        "firstVerdict": "REVIEW",
+        "finalVerdict": "BLOCK",
+        "firstPastWindowDeltaPct": 0.7709,
+        "finalPastWindowDeltaPct": -0.0895,
+        "deltaGainPct": -0.8604
+      }
+    }
+  ]
+}

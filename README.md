@@ -1,186 +1,209 @@
-# Aptura — Adaptive AI Trading Supervisor
+# Aptura
 
-**Track:** OpenServ Hackathon 02 · Reppo Track  
-**Category:** Auditable Agent Supervision & Strategy Risk Governance (Paper Research Laboratory — **zero live money / no wallet custody**)
+**Before your trading bot rewrites its own rules, Aptura checks the change on past data, gets a second opinion, and blocks it if it doesn't hold up.**
 
-> **Trading agents adapt blindly. Aptura audits every shift through three independent gates before touching strategy config.**
+OpenServ Hackathon 02 · Reppo track · Paper trading only: no wallet, no real money.
 
----
-
-## Why Aptura?
-
-Autonomous trading agents often overfit recent noise, drift silently during regime reversals, or rewrite their own risk weights without an independent audit trail. Aptura treats adaptation as a **verifiable state machine**:
-
-1. **Gate 1 · OpenServ SERV Reasoning (`SERVAnalyst`)** — Diagnoses strategy drift from bounded, past-only telemetry (`observedAtUtc`, trailing EWMA scout scores, recent matured shadow outcomes) using structured JSON Schema output (`json_schema` strict mode with `json_object` fallback). Never touches future bars or computes numerical PnL.
-2. **Gate 2 · Zero-Look-Ahead Deterministic Math Gate (`AdaptationEngine` + `validate_weights`)** — Hard Python constraints always outrank LLM output:
-   - Bounds check (`[15%, 85%]` per strategy, normalized to `1.0`)
-   - Cooldown enforcement (`>= 12` bars between adjustments)
-   - Strict causal replay over a separate 24-bar past-only segment (`pastSegmentDeltaPct`) using next-candle-open fills (`20 bps` fee + `15 bps` slippage per side by default)
-   - Explicit rejections (e.g., on adversarial whipsaw scenarios such as `synthetic-noise-guard`)
-3. **Gate 3 · Independent Reppo Eval Panel (`ReppoClient`)** — Submits sanitized reasoning traces asynchronously to Reppo Eval Router (`POST /api/v1/agents/evals`, `taskType: "action"`), polls `GET /api/v1/agents/evals/{id}`, surfaces rubric scores + route (`ship` / `review` / `block`), and keeps evaluation scores strictly distinct from investment performance.
-
-In addition to its interactive **Terminal**, **Live Market Feed** (Coinbase public market data every 15 seconds), and **Historical Replay** workspace, Aptura exposes **Supervisor-as-a-Service** (`POST /api/v1/supervise` & `GET /api/agent/manifest`) so other OpenServ agents can submit proposed strategy updates and receive deterministic `SHIP | REVIEW | BLOCK` verdicts.
+[Live app](#run-it) · [Demo video](#demo) · [Judges, start here](#judges-start-here) · [Proof](#proof-real-serv-and-reppo-calls) · [Results, losses included](#measured-results-losses-included)
 
 ---
 
-## Architecture
+## Kemi's 3 a.m. problem
 
-```mermaid
-flowchart LR
-    M["Market Feed / Historical Candles (<= t)"] --> S["Deterministic Scouts (Momentum & Reversal)"]
-    S -->|"Matured shadow outcomes & EWMA drift"| G1["Gate 1: OpenServ SERV Reasoning"]
-    G1 -->|"Structured hypothesis + bounded candidate weights"| G2["Gate 2: 24-Bar Causal Math & Risk Gate"]
-    G2 -->|"REJECTED"| R["Immutable Config Retained (BLOCK)"]
-    G2 -->|"PASSED"| G3["Gate 3: Reppo Eval Router (POST /api/v1/agents/evals)"]
-    G3 -->|"route: ship / review / block"| V["Versioned Config (v1.x.0) + SQLite Audit Log"]
-    EXT["External OpenServ Bot"] -->|"POST /api/v1/supervise"| G1
-```
+Kemi (a made-up user) runs a small bot that trades BONK on Solana. It mixes two simple strategies: follow the trend (momentum) and bet on bounce-backs (reversal).
 
----
+At 3 a.m. the trend breaks. The bot sees a few losing signals and decides to rewrite itself: **"Go 95% reversal, right now."** Nobody is awake to check whether that's a real change in the market or just noise.
 
-## Repository Structure
+Bots that tune themselves have no one asking *"prove it"* first. Aptura is that check.
 
-```text
-Aptura/
-├── apps/web/                     # Next.js 15 App Router UI + Zod contracts
-│   ├── app/page.tsx              # Storytelling landing + 3-Gate overview
-│   ├── app/onboarding/page.tsx   # Guided 3-step scenario setup
-│   ├── app/terminal/page.tsx     # Live market feed, replay & 3-Gate dashboard
-│   └── components/
-│       ├── ThreeGatePipeline.tsx # Live SERV -> Math Gate -> Reppo Eval UI
-│       ├── AgentSupervisePanel.tsx # Supervisor-as-a-Service interactive workbench
-│       ├── LiveWorkspace.tsx     # Live Coinbase observation + paper supervisor
-│       ├── EquityComparisonChart.tsx
-│       ├── MarketReplayChart.tsx
-│       ├── InterventionReport.tsx
-│       └── ResearchControls.tsx
-├── services/api/app/             # FastAPI backend & deterministic replay engine
-│   ├── main.py                   # Replay, live, Reppo poll, /api/agent/manifest, /api/v1/supervise
-│   ├── domain/models.py          # Typed Pydantic contracts
-│   ├── data/                     # Historical dataset catalog & live market adapter
-│   ├── strategies/               # Deterministic Momentum & Reversal scouts
-│   ├── supervisor/               # Causal adaptation engine, simulator, counterfactuals
-│   ├── evaluation/               # OpenServ SERVAnalyst & ReppoClient + job state machine
-│   └── storage/                  # SQLite persistence layer
-├── data/datasets.json            # Historical replay & adversarial guardrail datasets
-├── tests/                        # Unit, integration, hermetic, and live API tests
-├── Dockerfile                    # API container
-├── apps/web/Dockerfile           # Web UI container
-├── docker-compose.yml            # Full-stack Docker Compose setup
-├── Start-Aptura.ps1              # Windows convenience launcher
-├── .env.example                  # Blank environment template
-└── SUBMISSION.md                 # Hackathon write-up, X post draft & demo script
-```
+**Every change has to get past three gates:**
+
+| | Gate | What it does | Who decides |
+|---|---|---|---|
+| 1 | **OpenServ SERV Reasoning** | Reads only what was known at that moment and proposes a bounded change with its reasons | A language model, constrained to a strict JSON schema |
+| 2 | **Math gate** | Re-runs the last 24 hours with fees and slippage. The change must actually beat the current mix, stay within limits and respect a cooldown | Python. No model can override it |
+| 3 | **Reppo review** | Independent evaluators score the reasoning: ship, review or block | Reppo Eval Router |
+
+The math gate always has the final say. A perfect review score can't push through a change that the numbers don't support.
+
+**Rejections become feedback.** Set `maxRevisions` (up to 2) and a rejected change doesn't just stop there. The gate's reason and Reppo's critique are sent back to SERV, which proposes a revised change (or decides no change is justified), and the gate tests it again. Every round is returned with its weights, past-24-hour result, Reppo score and verdict, plus the measured gain from the first round to the last. Revisions are only sent to Reppo once they pass the math gate, so no credits go to candidates that can't ship.
 
 ---
 
-## Quickstart
+## Judges, start here
 
-### Option 1 · Docker Compose (Linux / macOS / Windows)
+No sign-in, no wallet.
 
-```bash
-cp .env.example .env
-# Optionally populate SERV_API_KEY, SERV_MODEL, REPPO_API_KEY in .env
-docker compose up --build
-```
+| Path | Time | Where | What you'll see |
+|---|---|---|---|
+| **A. Watch a change get blocked** | 2 min | `/terminal?scenario=momentum-breakdown&autorun=1` | The replay runs, drift is detected, and the three gates decide |
+| **B. Check the receipts** | 1 min | `/proof` | Real SERV response IDs and a settled Reppo evaluation. Your browser re-hashes the candles and rechecks the limits |
+| **C. Be the bot** | 2 min | `/judge` → Be the bot, or the `curl` below | Send your own change. Watch it get rejected, revised from the feedback and re-tested |
+| **D. See where we lose** | 1 min | `/evaluation` | Every dataset, including the ones where cash beat us |
 
-- Web UI: `http://localhost:3000`
-- Guided 3-Gate Demo: `http://localhost:3000/terminal?scenario=momentum-breakdown&autorun=1`
-- FastAPI Docs: `http://localhost:8000/docs`
-
-### Option 2 · Manual Local Development (Cross-Platform)
-
-**1. Configure environment**
-```bash
-cp .env.example .env
-```
-
-**2. Start FastAPI Backend (`Python 3.13+`)**
-```bash
-pip install -r requirements.txt
-PYTHONPATH=services/api python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
-```
-*(PowerShell on Windows: `$env:PYTHONPATH='services/api'; python -m uvicorn app.main:app --host 127.0.0.1 --port 8000`)*
-
-**3. Start Next.js Frontend (`Node 22+`)**
-```bash
-cd apps/web
-npm install
-npm run dev
-```
-
-*(Windows users can also launch both processes cleanly with `./Start-Aptura.ps1`.)*
-
----
-
-## Sponsor Integrations
-
-### 1. OpenServ SERV Reasoning (`services/api/app/evaluation/clients.py`)
-- Uses `SERV_BASE_URL` (default `https://inference-api.openserv.ai/v1`), `SERV_API_KEY`, and `SERV_MODEL` (e.g., `gpt-5.6-sol`) via `/chat/completions`.
-- Enforces strict JSON Schema output (`response_format: {"type": "json_schema", ...}` with `json_object` fallback) and one repair retry if schema validation fails.
-- Records `provenance` honestly as `SERV_GENERATED` vs `DETERMINISTIC_FALLBACK`, plus `latencyMs` and `responseId`.
-
-### 2. Reppo Eval Router (`services/api/app/evaluation/clients.py` & `workflow.py`)
-- Calls `POST /api/v1/agents/evals` with `taskType: "action"` and a sanitized audit prompt (`OBSERVED_AT_UTC`, market, weight transition, EWMA divergence, matured evidence IDs, and deterministic gate metrics—never private keys or `.env` values).
-- Polls `GET /api/v1/agents/evals/{id}` (`QUEUED` / `PROCESSING` -> `PENDING`, `COMPLETED` -> `SETTLED`), mapping `result.score`, `result.route` (`ship` / `review` / `block`), `result.decision`, `result.rubric_scores`, and `creditsCharged`.
-
----
-
-## Supervisor-as-a-Service API
-
-- **`GET /api/agent/manifest`** — OpenServ-compatible service manifest advertising capabilities and unit economics (`$0.00` local causal math gate; `440` credits / `~$0.22` per Reppo panel audit).
-- **`POST /api/v1/supervise`** — Accepts `agentName`, `datasetId`, `currentWeights`, optional `proposedWeights`, optional `cursorIndex`, `rationale`, and `runReppoReview`. Runs SERV Reasoning -> 24-bar causal math gate -> optional Reppo audit and returns:
-  - `decision`: `"SHIP" | "REVIEW" | "BLOCK"`
-  - `servProposal`, `deterministicGate`, optional `reppoEvaluation`, `unitEconomics`, and human-readable `summary`.
-
-Example request:
 ```bash
 curl -X POST http://127.0.0.1:8000/api/v1/supervise \
   -H "Content-Type: application/json" \
-  -d '{
-    "agentName": "solana-alpha-agent",
-    "datasetId": "momentum-breakdown",
-    "currentWeights": {"momentum": 0.6, "reversal": 0.4},
-    "proposedWeights": {"momentum": 0.05, "reversal": 0.95},
-    "rationale": "Go 95% reversal immediately",
-    "runReppoReview": false
-  }'
+  -d '{"agentName":"kemi-bonk-bot","datasetId":"momentum-breakdown",
+       "currentWeights":{"momentum":0.6,"reversal":0.4},
+       "proposedWeights":{"momentum":0.05,"reversal":0.95},
+       "runReppoReview":false, "maxRevisions":2}'
+# -> "rounds": [ {verdict: BLOCK, 5/95}, {verdict: ..., SERV revision} ], "improvement": {...}
 ```
-This rogue unbounded proposal returns `decision: "BLOCK"` because `[5%, 95%]` violates the `[15%, 85%]` hard weight bounds.
+
+Agents can read [`/llms.txt`](apps/web/public/llms.txt) and `GET /api/agent/manifest`.
 
 ---
 
-## Datasets & Scenarios
+## Proof: real SERV and Reppo calls
 
-- `momentum-breakdown` — **BONK / SOL** (199 hourly candles): momentum stops working mid-run; triggers causal weight shift.
-- `choppy-market` — **POPCAT / SOL** (199 hourly candles): mean-reverting choppy regime.
-- `steady-trend` — **SOL / USDC** (199 hourly candles): sustained trend and pullback.
-- `synthetic-noise-guard` — **SYNTH-MEME / SOL** (120 synthetic candles): adversarial whipsaw designed to verify weak changes are rejected.
+Recorded on **14 Nov 2026** with `scripts/run_live_proof.py`. Four live calls, with every SERV response ID and Reppo eval ID listed. Full receipts are in [`data/proof/live-proof.json`](data/proof/live-proof.json).
+
+**Receipt 1: the bot asks for 95% reversal**
+
+| | |
+|---|---|
+| SERV | `SERV_GENERATED`, model `gpt-5.6-sol`, response `chatcmpl-EkChHtNc5bZQ3s9HdXiEZgjYB2K1v`, 9.4 s |
+| Math gate | 95% breaks the 15–85% limit and the 25-point step limit. Past-24-hour test: −1.797% vs. current mix |
+| Verdict | **BLOCK** |
+
+**Receipt 2: SERV proposes a bounded change and Reppo reviews it**
+
+| | |
+|---|---|
+| SERV | `SERV_GENERATED`, response `chatcmpl-EkChQRj5M4Jm7YM31ib3XhIzTpQ3o`, 8.4 s. Regime: `UNCERTAIN`. Suggests 70/30 |
+| Reppo | Eval `cmwgqi5ji000107lauz6r6llv` · **100/100 · accept · route `ship`** · 440 credits · settled in 25 s |
+| Math gate | Past-24-hour test: +0.000%. The threshold is +0.06% |
+| Verdict | **BLOCK** |
+
+**Receipt 3: rejected, then revised from the feedback** (`maxRevisions: 2`)
+
+| Round | Weights | Past 24h | Reppo | Verdict |
+|---|---|---|---|---|
+| 0, the bot asks | 5 / 95 | −1.797% | `cmwgu3dz8000308jw2z0y5e11` · 99 · route `review` | BLOCK |
+| 1, SERV revises using the gate reason + Reppo critique | 60 / 40 (no change) | 0.000% | not sent (didn't pass the gate) | BLOCK, "keep current weights" |
+
+SERV responses: `chatcmpl-EkEGhthBektJ5D9jDTO4Y6Y9wTEb6`, `chatcmpl-EkEIrZ9YCRZmtJdk4kgokepVRwswp`. With the feedback in hand, SERV stopped asking for a change. That moved the outcome from −1.80% to 0.00% on the same past window.
+
+**Receipt 4: a change that passes, and a revision that doesn't** (`maxRevisions: 1`, candle 70)
+
+| Round | Weights | Past 24h | Reppo | Verdict |
+|---|---|---|---|---|
+| 0, the bot asks | 45 / 55 | **+0.771%** | `cmwgucnkc000107lbsueos9r1` · 81 · low confidence, route `review` | REVIEW |
+| 1, SERV revises | 65 / 35 | −0.090% | not sent | BLOCK |
+| **Returned** | **45 / 55** | | | **REVIEW**: round 0 kept |
+
+Receipt 2 is the most important thing we learned (see below).
+
+**Nothing has shipped on a live call yet.** In all 4 live calls, either the gate or Reppo held the change back. In the offline replays the gate accepted 8 of 34 changes, so it can say yes. Live, a change has to clear both.
 
 ---
 
-## Verification & Testing
+## Measured results, losses included
 
-Run hermetic unit and API integration tests (isolated from local `.env` keys):
-```bash
-PYTHONPATH=services/api python -m pytest -q -m "not live"
-```
+Full replays of all 4 datasets with `scripts/run_evaluation.py`, no network, fully reproducible. Fills happen at the next candle's open with 20 bps fee + 15 bps slippage per side. Raw numbers are in [`data/evaluation/results.json`](data/evaluation/results.json).
 
-Run live OpenServ SERV Reasoning + Reppo Eval Router end-to-end verification (requires valid keys in `.env` and Reppo credits):
-```bash
-PYTHONPATH=services/api python -m pytest -s -m live tests/test_integrations_and_supervise.py
-```
+| Dataset | Adaptive | Fixed 50/50 | Momentum only | Cash | Changes proposed → accepted |
+|---|---|---|---|---|---|
+| BONK/SOL, momentum breaks | **+1.66%** | −5.52% | −0.76% | 0% | 9 → 3 |
+| POPCAT/SOL, choppy | −4.39% | −5.23% | −6.14% | 0% | 10 → 2 |
+| SOL/USDC, steady trend | −3.38% | −4.39% | −3.96% | 0% | 11 → 2 |
+| SYNTHETIC whipsaw | −1.00% | 0% | +4.28% | 0% | 4 → 1 |
 
-Frontend typecheck and production build:
-```bash
-npm --prefix apps/web run typecheck
-npm --prefix apps/web run build
-```
+What this says, plainly:
+
+- **Adaptive beat fixed 50/50 on all 3 real datasets**, by +7.2, +0.8 and +1.0 points.
+- **It made money on only 1 of 3.** Holding cash beat it on 3 of the 4 datasets.
+- **The gate rejected 26 of 34 proposed changes (76%).** Most proposed changes didn't show a measurable benefit on past data, so they never shipped.
+- **It failed the synthetic noise test.** One change slipped through on pure noise and cost 1%. That test exists to catch exactly this, so we report it.
+- 3 real datasets of 199 hourly candles is far too few to claim an edge. Aptura's job is to block bad changes, not to promise profit.
 
 ---
 
-## Honest Disclaimers
+## What we found building it
 
-- **Paper research lab only:** All fills (`candle[t+1].open`), portfolio balances, P&L comparisons, and drawdowns are simulated. No wallet connection or real exchange execution exists.
-- **No look-ahead:** Signals evaluate completed candles only (`<= t`); the 24-bar validation window only replays historical bars prior to the current cursor.
-- **AI is not the numerical engine:** Python computes every price indicator, fill, fee/slippage cost, and drawdown metric. Reppo scores evaluate reasoning quality, not financial alpha.
+**Our first feedback loop made things worse, and a live call caught it.** On the first live run of Receipt 4, round 0 passed the gate (+0.771%). Reppo routed it to review, SERV revised to 70/30, that failed (−0.090%), and the loop returned the failed revision. A revision should never throw away a better round. Aptura now keeps the best round (SHIP, then a gate-passing REVIEW, then BLOCK), there's a regression test for it, and the before-fix receipt is kept in [`data/proof/ship-before-fix.json`](data/proof/ship-before-fix.json) (Reppo eval `cmwgu6f8o000408jwns9arakf`).
+
+**SERV and the replay keep disagreeing about direction.** In every live call SERV read the matured signal outcomes as favouring momentum. At candle 70 the 24-hour portfolio replay said the opposite: tilting toward reversal earned +0.771%, while SERV's momentum-leaning revisions lost. They measure different things (per-signal outcomes vs. a fee-paying portfolio), which is exactly why one of them has to have the final say.
+
+**The reviewer and the numbers disagreed, and the numbers were right to win.** In Receipt 2, Reppo gave SERV's reasoning a perfect 100 and said ship. The same change showed +0.000% on the past 24 hours: no measurable benefit. The reasoning was well written and safe, but it wasn't backed by evidence. If review scores alone could promote changes, this one would have shipped. That's why Reppo's verdict can block a change but can never approve one on its own.
+
+**The bot's panic was backwards.** The bot wanted 95% reversal. SERV read the same 7 matured outcomes and concluded that reversal was the strategy that was consistently losing. It suggested a small shift toward momentum (70/30), flagged the regime as `UNCERTAIN`, and noted that 7 samples is very few. Even that careful suggestion didn't clear the math gate. Two layers disagreeing with a panicked bot is the point.
+
+---
+
+## Who pays
+
+Builders of self-tuning trading agents. A bad self-update can cost far more than a check.
+
+| Tier | What you get | Proposed price | Our cost |
+|---|---|---|---|
+| Check | Math gate only, rate limited | Free | $0 |
+| Reason | SERV proposal + up to 2 feedback revisions + math gate | $0.05 per change | SERV inference |
+| Reviewed | Everything above + a Reppo review of each change that passes the gate | $0.49 per change | ~$0.22 (440 Reppo credits) |
+
+These prices are proposed, not billed yet. They're also published in `GET /api/agent/manifest` so other agents can read them.
+
+---
+
+## Limits we state plainly
+
+- **Paper trading only.** No wallet, no exchange keys, no order is ever sent anywhere. All profit and loss is simulated.
+- **Reppo scores reasoning, not profit.** Its scores are never shown as trading performance.
+- **Small sample.** 3 real markets × 199 hourly candles, plus 1 synthetic. Not enough to claim an edge.
+- **The datasets are integrity-hashed, not source-signed.** Hashes prove the candles weren't changed after capture, not that the provider was right.
+- **The live feed** polls GeckoTerminal's free API every 15 seconds, so data can lag.
+- **Revisions re-use the same 24-hour window.** Each extra round is another test on the same data, which raises the chance of passing by luck. That's why revisions are capped at 2, the fallback revision just halves the step (it's never tuned on the window), and we report every round.
+- **Single machine.** SQLite and file locks; not a hardened multi-user deployment.
+- **Public deployments:** set `APTURA_PUBLIC=1` and `APTURA_ADMIN_KEY`. Reppo reviews then need the `x-aptura-admin-key` header, and `/api/v1/supervise` is limited to 6 calls per IP per minute (`APTURA_SUPERVISE_PER_MIN`). The IP comes from `x-forwarded-for`, so put the API behind a proxy you control.
+
+---
+
+## Run it
+
+```bash
+cp .env.example .env          # add SERV_API_KEY, SERV_MODEL, REPPO_API_KEY for live calls
+docker compose up --build     # web :3000, API :8000
+```
+
+Without Docker:
+
+```bash
+pip install -r requirements.txt
+PYTHONPATH=services/api python -m uvicorn app.main:app --port 8000
+cd apps/web && npm install && npm run dev
+```
+
+On Windows you can also run `./Start-Aptura.ps1`. The `/`, `/proof`, `/evaluation` and `/judge` pages read static files in `apps/web/public/proof`, so they work even without the API.
+
+## Demo
+
+A 3-minute script is in [SUBMISSION.md](SUBMISSION.md).
+
+---
+
+## For developers
+
+```text
+apps/web/            Next.js 15 · landing, /judge, /proof, /evaluation, /onboarding, /terminal
+services/api/app/    FastAPI · strategies, supervisor, replay, SERV + Reppo clients, SQLite
+scripts/             run_evaluation.py, run_live_proof.py
+data/                datasets, evaluation results, proof receipts
+docs/                product spec, implementation status, design QA
+tests/               63 tests: replay, gates, providers (mocked), proof endpoints, revise loop, rate limit
+```
+
+**Gate rules** (`services/api/app/supervisor/engine.py`): each weight stays between 15% and 85% and weights sum to 1 · a step moves a weight by at most 25 points · 18-bar cooldown · the change must beat the current mix by at least +0.06% on the 24 bars before the decision · enough matured samples · cited evidence IDs must exist.
+
+**Sponsor tech**
+
+- *OpenServ SERV Reasoning* — `services/api/app/evaluation/clients.py`. Uses `/chat/completions` with a strict `json_schema` response format, a `json_object` fallback and one repair retry. Records `SERV_GENERATED` vs. `DETERMINISTIC_FALLBACK` provenance, latency and response ID.
+- *Reppo Eval Router* — `POST /api/v1/agents/evals` (`taskType: action`), then polls `GET /api/v1/agents/evals/{id}`. Sends a sanitized prompt only: timestamps, weights, scores and evidence IDs, never keys. The job queue survives restarts.
+
+**Tests**
+
+```bash
+PYTHONPATH=services/api python -m pytest -q -m "not live"     # hermetic
+PYTHONPATH=services/api python -m pytest -s -m live           # real SERV + Reppo, spends credits
+npm --prefix apps/web run typecheck && npm --prefix apps/web run build
+```

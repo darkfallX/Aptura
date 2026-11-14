@@ -317,6 +317,24 @@ class SuperviseRequest(BaseModel):
     rationale: Optional[str] = Field(default=None, max_length=1200)
     runReppoReview: bool = False
     waitForReppo: bool = False
+    maxRevisions: int = Field(default=0, ge=0, le=2)
+
+
+class SuperviseRound(BaseModel):
+    round: int
+    source: Literal["caller", "serv", "serv-revision"]
+    weights: dict[str, float]
+    servProvenance: str
+    servResponseId: Optional[str] = None
+    hypothesis: str
+    gatePassed: bool
+    gateSummary: str
+    pastWindowDeltaPct: float
+    reppoEvalId: Optional[str] = None
+    reppoScore: Optional[float] = None
+    reppoRoute: Optional[str] = None
+    reppoCritique: Optional[str] = None
+    verdict: Literal["SHIP", "REVIEW", "BLOCK"]
 
 
 class SuperviseResponse(BaseModel):
@@ -332,5 +350,7 @@ class SuperviseResponse(BaseModel):
     servProposal: SERVProposal
     deterministicGate: ValidationGateResult
     reppoEvaluation: Optional[ReppoEvaluationRecord] = None
+    rounds: list[SuperviseRound] = Field(default_factory=list)
+    improvement: dict[str, Any] = Field(default_factory=dict)
     unitEconomics: dict[str, Any]
     summary: str

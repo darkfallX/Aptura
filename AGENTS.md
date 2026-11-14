@@ -11,7 +11,7 @@ The experience has **three connected routes**:
 - `/onboarding` — lightweight **guided setup** that introduces strategies and chooses a reproducible historical replay.
 - `/terminal` — a **single cohesive supervision dashboard** with price chart, strategies, decisions, adaptation timeline, fixed-vs-adaptive performance, and real evaluation evidence.
 
-Read `product.md` for the product contract, and `skill.md` for the recommended task workflow. If the documents disagree, defer to `product.md` for functionality, this file for implementation safeguards, and ask for clarification only if a blocking contradiction remains.
+Read `docs/product.md` for the product contract, and `docs/skill.md` for the recommended task workflow. If the documents disagree, defer to `docs/product.md` for functionality, this file for implementation safeguards, and ask for clarification only if a blocking contradiction remains.
 
 ## Non-negotiable engineering principles
 
