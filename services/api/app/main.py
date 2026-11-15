@@ -327,7 +327,7 @@ def create_app(
         feed["supervisor"] = commit_live(meta, feed)
         return feed
 
-    @app.get("/api/health")
+    @app.api_route("/api/health", methods=["GET", "HEAD"])  # HEAD for uptime monitors
     @serialized
     def get_health() -> dict[str, Any]:
         return {
