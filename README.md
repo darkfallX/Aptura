@@ -4,7 +4,7 @@
 
 OpenServ Hackathon 02 · Reppo track · Paper trading only: no wallet, no real money.
 
-**Live app: [aptura-khaki.vercel.app](https://aptura-khaki.vercel.app)**
+**Live app: [aptura-khaki.vercel.app](https://aptura-khaki.vercel.app)** · **[Demo video](https://x.com/Darkfall_x/status/2122039250598126073)**
 
 [Run it locally](#run-it) · [Judges, start here](#judges-start-here) · [Proof](#proof-real-serv-and-reppo-calls) · [Results, losses included](#measured-results-losses-included)
 
