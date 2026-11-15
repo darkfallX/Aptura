@@ -23,6 +23,7 @@ export type EvalResult = {
   datasetId: string; name: string; scenario: string; synthetic: boolean; candles: number;
   tracks: Record<"adaptive" | "fixed_50_50" | "momentum_only" | "cash", { label: string; netReturnPct: number; maxDrawdownPct: number; trades: number; feesUsd: number }>;
   adaptiveMinusFixedPct: number | null;
+  curve?: { adaptive: number[]; fixed: number[] };
   adaptations: { proposed: number; accepted: number; rejected: number; events?: { index: number; status: string; deltaPct: number | null }[] };
 };
 

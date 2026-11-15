@@ -80,6 +80,10 @@ def run_dataset(meta, candles) -> dict:
             "rejectionReasons": [e.rejectionReason for e in rejected if e.rejectionReason][:5],
         },
         "decisionMix": actions,
+        "curve": {
+            k: [round(getattr(pt, f), 2) for pt in snap.equityCurve[:: max(1, len(snap.equityCurve) // 40)]]
+            for k, f in (("adaptive", "adaptiveEquity"), ("fixed", "fixedEquity"))
+        },
         "finalWeights": snap.activeWeights,
         "finalVersion": snap.configVersion,
     }

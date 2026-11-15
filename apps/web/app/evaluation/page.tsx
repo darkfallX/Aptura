@@ -1,82 +1,83 @@
 "use client";
 
-import { Odometer, PaperFoot, PaperNav, useInView, useTicker } from "@/components/paper/Paper";
+import { LineChart } from "lucide-react";
+import { Page, Spark } from "@/components/x/Shell";
 import { evaluation, signed, utc } from "@/lib/proof";
 
-const TRACKS = [["adaptive", "ADAPTIVE"], ["fixed_50_50", "FIXED 50/50"], ["momentum_only", "MOMENTUM"], ["cash", "CASH"]] as const;
-
-function Strip({ events, candles }: { events: { index: number; status: string; deltaPct: number | null }[]; candles: number }) {
-  const [ref, seen] = useInView<HTMLDivElement>(0.25);
-  const shown = useTicker(events.length, seen, 110);
-  return (
-    <div ref={ref} className="p-strip" role="img" aria-label={`${events.filter((e) => e.status === "REJECTED").length} of ${events.length} changes rejected`}>
-      {events.map((e, i) => (
-        <i key={i} className={`${e.status === "REJECTED" ? "no" : "yes"} ${i < shown ? "on" : ""}`} style={{ left: `${(e.index / candles) * 100}%` }} />
-      ))}
-    </div>
-  );
-}
+const TRACKS = [["adaptive", "Adaptive"], ["fixed_50_50", "Fixed 50/50"], ["momentum_only", "Momentum"], ["cash", "Cash"]] as const;
 
 export default function EvaluationPage() {
   const s = evaluation.summary;
-  const [ref, seen] = useInView<HTMLDivElement>(0.3);
   return (
-    <div className="p-page">
-      <PaperNav />
-      <main className="p-wrap">
-        <h1 className="p-display" style={{ marginTop: 50 }}>Where it works.<br /><em>Where it doesn't.</em></h1>
-        <div className="p-notes" ref={ref}>
-          <div><b><Odometer value={`${s.adaptiveBeatFixedOnReal}/${s.realDatasets}`} run={seen} /></b><p>real markets where adaptive beat fixed 50/50</p></div>
-          <div className="red"><b><Odometer value={`${s.cashBeatAdaptive}/${s.datasets}`} run={seen} /></b><p>markets where holding cash beat adaptive</p></div>
-          <div><b><Odometer value={`${s.adaptationsRejected}/${s.adaptationsProposed}`} run={seen} /></b><p>proposed changes the gate rejected</p></div>
+    <Page>
+      <div className="a-head">
+        <div>
+          <h1>Replays</h1>
         </div>
+        <div className="a-head-actions"><a className="x-btn ghost" href="/proof/evaluation.json">Raw results</a></div>
+      </div>
 
-        <div className="p-table-wrap">
-          <table className="p-table">
-            <thead><tr><th>MARKET</th>{TRACKS.map(([, l]) => <th key={l}>{l}</th>)}<th>MAX DRAWDOWN</th><th>CHANGES</th></tr></thead>
-            <tbody>
-              {evaluation.results.map((r) => {
-                const best = Math.max(...TRACKS.map(([k]) => r.tracks[k].netReturnPct));
-                return (
-                  <tr key={r.datasetId}>
-                    <td>{r.name}{r.synthetic && <span className="p-mono" style={{ fontSize: 11, color: "var(--stamp)", marginLeft: 10 }}>SYNTHETIC</span>}</td>
-                    {TRACKS.map(([k]) => {
-                      const v = r.tracks[k].netReturnPct;
-                      return <td key={k} className={`${v < 0 ? "neg" : ""} ${v === best ? "best" : ""}`}>{signed(v)}</td>;
-                    })}
-                    <td>{r.tracks.adaptive.maxDrawdownPct.toFixed(2)}%</td>
-                    <td>{r.adaptations.accepted} / {r.adaptations.proposed}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+      <div className="x-grid" style={{ gridTemplateColumns: "repeat(4,minmax(0,1fr))" }}>
+        {evaluation.results.map((r) => {
+          const a = r.tracks.adaptive.netReturnPct;
+          return (
+            <div className="x-stat" key={r.datasetId}>
+              <div className="x-stat-top"><span><LineChart />{r.name.split(" (")[0]}</span><em>{r.synthetic ? "synthetic" : `${r.candles}h`}</em></div>
+              <div className="x-stat-val"><b className="num">{signed(a)}</b>{r.curve && <Spark values={r.curve.adaptive} red={a < 0} />}</div>
+              <span className="x-stat-sub"><span className={(r.adaptiveMinusFixedPct ?? 0) >= 0 ? "x-up" : "x-down"}>{signed(r.adaptiveMinusFixedPct ?? 0)}</span> vs fixed</span>
+            </div>
+          );
+        })}
+      </div>
 
-        <section style={{ margin: "110px 0 40px" }}>
-          <h2 className="p-h2">Every change, on the timeline.</h2>
-          <div className="p-strips">
-            {evaluation.results.map((r) => (
-              <div key={r.datasetId} className="p-strip-row">
-                <span>{r.name.split(" ")[0]}</span>
-                <Strip events={r.adaptations.events ?? []} candles={r.candles} />
-              </div>
-            ))}
+      <section className="a-sec">
+        <div className="a-sec-head"><h2>Every track</h2></div>
+        <div className="x-table-card">
+          <div className="x-table-scroll">
+            <table className="x-table">
+              <thead><tr><th>Market</th>{TRACKS.map(([, l]) => <th key={l}>{l}</th>)}<th>Drawdown</th><th>Kept</th></tr></thead>
+              <tbody>
+                {evaluation.results.map((r) => {
+                  const best = Math.max(...TRACKS.map(([k]) => r.tracks[k].netReturnPct));
+                  return (
+                    <tr key={r.datasetId}>
+                      <td><b>{r.name.split(" (")[0]}</b>{r.synthetic && <span className="x-pill neutral" style={{ marginLeft: 8 }}>synthetic</span>}</td>
+                      {TRACKS.map(([k]) => {
+                        const v = r.tracks[k].netReturnPct;
+                        return <td key={k} className={v > 0 ? "x-up" : v < 0 ? "x-down" : "x-mute"} style={{ fontWeight: v === best ? 800 : 500 }}>{signed(v)}</td>;
+                      })}
+                      <td className="x-mute">{r.tracks.adaptive.maxDrawdownPct.toFixed(2)}%</td>
+                      <td>{r.adaptations.accepted}/{r.adaptations.proposed}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
-          <div className="p-tape-key"><span><i style={{ background: "var(--stamp)" }} />rejected</span><span><i style={{ background: "var(--paper)" }} />shipped</span><span>hour 0 → 199</span></div>
-        </section>
+        </div>
+      </section>
 
-        <section className="p-fail">
-          <span className="p-mono">FAILURE</span>
-          <h2 className="p-h2">On pure noise, one change slipped through.<br /><em>It cost 1%.</em></h2>
-          <p className="p-lede">The synthetic whipsaw exists to catch exactly this. The gate stopped 3 of 4 changes and missed one.</p>
-        </section>
+      <section className="a-sec">
+        <div className="a-sec-head"><h2>Every proposal</h2><span className="a-diff-legend"><span><i style={{ background: "var(--red)" }} />blocked</span><span><i style={{ background: "var(--green)" }} />kept</span></span></div>
+        <div className="x-card x-card-pad" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {evaluation.results.map((r) => (
+            <div key={r.datasetId} style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 14, alignItems: "end" }}>
+              <span style={{ fontSize: 13.5, fontWeight: 600 }}>{r.name.split(" ")[0]}</span>
+              <div className="x-strip" role="img" aria-label={`${r.adaptations.rejected} of ${r.adaptations.proposed} rejected`}>
+                {(r.adaptations.events ?? []).map((e, i) => <i key={i} className={e.status === "REJECTED" ? "no" : "ok"} style={{ left: `${(e.index / r.candles) * 100}%`, ["--i" as string]: i }} />)}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
 
-        <p className="p-mono" style={{ fontSize: 12, color: "var(--desk-dim)", lineHeight: 1.9, margin: "70px 0 120px" }}>
-          {evaluation.engine} · generated {utc(evaluation.generatedAtUtc)} · reproduce: python scripts/run_evaluation.py
-        </p>
-      </main>
-      <PaperFoot />
-    </div>
+      <section className="a-sec">
+        <div className="a-sec-head"><h2>Where it failed</h2></div>
+        <div className="a-final no" style={{ alignItems: "flex-start", flexDirection: "column", gap: 6 }}>
+          One noise trade slipped through: −1%.
+          <span>Cash beat adaptive in {s.cashBeatAdaptive} of {s.datasets}.</span>
+        </div>
+      </section>
+    </Page>
   );
 }

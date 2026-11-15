@@ -37,6 +37,7 @@ No sign-in, no wallet.
 | Path | Time | Where | What you'll see |
 |---|---|---|---|
 | **A. Watch a change get blocked** | 2 min | `/terminal?scenario=momentum-breakdown&autorun=1` | The replay runs, drift is detected, and the three gates decide |
+| **A0. Start here** | 1 min | `/requests` | Every change a bot tried to make, as a request with its checks. Open one to read the full review |
 | **B. Check the receipts** | 1 min | `/proof` | Real SERV response IDs and a settled Reppo evaluation. Your browser re-hashes the candles and rechecks the limits |
 | **C. Be the bot** | 2 min | `/judge` → Be the bot, or the `curl` below | Send your own change. Watch it get rejected, revised from the feedback and re-tested |
 | **D. See where we lose** | 1 min | `/evaluation` | Every dataset, including the ones where cash beat us |
@@ -52,6 +53,27 @@ curl -X POST http://127.0.0.1:8000/api/v1/supervise \
 ```
 
 Agents can read [`/llms.txt`](apps/web/public/llms.txt) and `GET /api/agent/manifest`.
+
+---
+
+## The interface
+
+Every change a bot wants to make to itself is shown as a **change request**, the way a code change gets a pull request and checks.
+
+| Page | What it shows |
+|---|---|
+| `/` | A live request whose three checks resolve one by one into a verdict, the scoreboard, and the review flow |
+| `/requests` | The inbox: 4 live requests (real SERV and Reppo calls) and 34 replay proposals, filterable by blocked or passed. Each row shows the bot, a before/after weight bar, one chip per check and the verdict |
+| `/requests/<id>` | One request. **Change**: today's mix, what was asked, SERV's suggestion and the final mix, with the 15% and 85% limits drawn as dashed lines. **Timeline**: the bot opens it → SERV reasons → the math gate replays the past 24 hours (result, +0.06% threshold, limit, step) → Reppo scores it → feedback goes back to SERV → revision → verdict. **Side panel**: the three checks (re-runnable) and every SERV and Reppo ID |
+| `/judge` (Try it) | Open a request yourself: drag the slider, watch the limit pills, send it, and see the checks and revision rounds |
+| `/evaluation` (Replays) | One sparkline card per market, every track (adaptive, fixed 50/50, momentum only, cash), the 34 proposals on a timeline, and where it failed |
+| `/proof` (Verify) | 7 checks your browser runs itself: candle hash, history before the decision, no future data, limits, threshold, Reppo settlement |
+| `/developers` (API) | Endpoints, a request and the recorded response, limits and proposed pricing. Agents can read `/llms.txt` and `/api/agent/manifest` |
+| `/terminal` | The full replay workstation and the live market supervisor |
+
+Check chips: **SERV** green means a live, schema-valid proposal. **Math** green means the change beat today's mix by at least +0.06% on the past 24 hours inside 15–85%, with a step of at most 25 points. **Reppo** green means route ship, amber means route review, grey means no review was requested. The math gate always has the final say.
+
+Light, dark and system themes are in the top bar.
 
 ---
 
@@ -185,7 +207,7 @@ A 3-minute script is in [SUBMISSION.md](SUBMISSION.md).
 ## For developers
 
 ```text
-apps/web/            Next.js 15 · landing, /judge, /proof, /evaluation, /onboarding, /terminal
+apps/web/            Next.js 15 · landing, /requests, /requests/[id], /judge (try it), /proof (verify), /evaluation (replays), /onboarding, /terminal (light, dark, system themes)
 services/api/app/    FastAPI · strategies, supervisor, replay, SERV + Reppo clients, SQLite
 scripts/             run_evaluation.py, run_live_proof.py
 data/                datasets, evaluation results, proof receipts

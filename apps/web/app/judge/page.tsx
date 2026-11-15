@@ -2,101 +2,118 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { PaperFoot, PaperNav, Receipt, type Line } from "@/components/paper/Paper";
-import { pct, shortId, signed, utc } from "@/lib/proof";
+import { ArrowDown, Flag } from "lucide-react";
+import { MixBar, Page, StatusIcon } from "@/components/x/Shell";
+import { signed } from "@/lib/proof";
 
-const STUBS = [
-  { min: 2, l: "A", h: "Watch a change get blocked", href: "/terminal?scenario=momentum-breakdown&autorun=1", code: "/terminal?scenario=momentum-breakdown&autorun=1" },
-  { min: 1, l: "B", h: "Check the receipts yourself", href: "/proof", code: "/proof" },
-  { min: 2, l: "C", h: "Be the bot", href: "#be-the-bot", code: "POST /api/v1/supervise" },
-  { min: 1, l: "D", h: "See where we lose", href: "/evaluation", code: "/evaluation" },
+const PATHS = [
+  { min: 2, h: "Watch a change get blocked", href: "/terminal?scenario=momentum-breakdown&autorun=1" },
+  { min: 1, h: "Read a request end to end", href: "/requests/revise" },
+  { min: 1, h: "Verify the receipts", href: "/proof" },
+  { min: 1, h: "See where it loses", href: "/evaluation" },
 ];
 
-type Resp = {
-  requestId: string; observedAtUtc: string; decision: "SHIP" | "REVIEW" | "BLOCK"; datasetName: string;
-  currentWeights: Record<string, number>; proposedWeights: Record<string, number>;
-  servProposal: { provenance: string; responseId?: string | null };
-  deterministicGate: { weightsInBounds: boolean; pastSegmentDeltaPct: number; cooldownRespected: boolean };
-  rounds: { round: number; source: string; weights: Record<string, number>; verdict: string; pastWindowDeltaPct: number; gatePassed: boolean }[];
-};
+type Round = { round: number; weights: { momentum: number; reversal: number }; verdict: string; pastWindowDeltaPct: number; gatePassed: boolean; hypothesis: string };
+type Resp = { requestId: string; decision: "SHIP" | "REVIEW" | "BLOCK"; servProposal: { provenance: string; responseId?: string | null }; deterministicGate: { passed: boolean; pastSegmentDeltaPct: number }; rounds: Round[]; improvement?: { chosenRound?: number } };
+type Phase = "idle" | "running" | "done" | "error";
 
-function BeTheBot() {
+export default function TryItPage() {
   const [mom, setMom] = useState(5);
-  const [busy, setBusy] = useState(false);
+  const [phase, setPhase] = useState<Phase>("idle");
   const [res, setRes] = useState<Resp | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-  const [n, setN] = useState(0);
+  const [err, setErr] = useState("");
+  const inside = mom >= 15 && mom <= 85;
+  const step = Math.abs(mom - 60);
   async function send() {
-    setBusy(true); setErr(null); setRes(null);
+    setPhase("running"); setRes(null); setErr("");
     try {
       const r = await fetch("/api/v1/supervise", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ agentName: "judge-bot", datasetId: "momentum-breakdown", currentWeights: { momentum: 0.6, reversal: 0.4 }, proposedWeights: { momentum: mom / 100, reversal: 1 - mom / 100 }, runReppoReview: false, maxRevisions: 2 }),
       });
-      if (r.status === 429) { setErr("Slow down: 6 sends per minute."); return; }
-      if (!r.ok) throw new Error(`API answered ${r.status}`);
-      setRes(await r.json()); setN((x) => x + 1);
+      if (r.status === 429) { setErr("Limit: 6 per minute."); setPhase("error"); return; }
+      if (!r.ok) throw new Error(String(r.status));
+      setRes(await r.json()); setPhase("done");
     } catch {
-      setErr("The API isn't reachable from this deployment. Run it locally: docker compose up");
-    } finally { setBusy(false); }
+      setErr("API offline. Run docker compose up."); setPhase("error");
+    }
   }
-  const lines: Line[] = res ? [
-    { title: <>judge-bot wants to rewrite itself</> },
-    { k: "today", v: `${pct(res.currentWeights.momentum)} / ${pct(res.currentWeights.reversal)}` },
-    { k: "serv", v: res.servProposal.provenance === "SERV_GENERATED" ? shortId(res.servProposal.responseId, 18) : "not configured" },
-    ...res.rounds.flatMap((r): Line[] => [
-      { rule: true },
-      { k: r.round === 0 ? "you ask" : `revision ${r.round}`, v: `${pct(r.weights.momentum)} / ${pct(r.weights.reversal)}`, tone: "strong" },
-      { k: "past 24h", v: `${signed(r.pastWindowDeltaPct, 3)} · ${r.verdict === "SHIP" ? "ship" : r.gatePassed ? r.verdict.toLowerCase() : "no"}`, tone: r.gatePassed ? undefined : "hit" },
-    ]),
-    { rule: true },
-    { k: "needs", v: "+0.060% · 15–85% · step ≤ 25" },
-  ] : [];
+  const first = res?.rounds?.[0];
+  const servOk = res?.servProposal.provenance === "SERV_GENERATED";
+  const checks: { name: string; tone: "ok" | "no" | "warn" | "idle"; note: string; det: string }[] = [
+    { name: "SERV reasoning", tone: !res ? "idle" : servOk ? "ok" : "warn", note: !res ? "" : servOk ? "live" : "off", det: res && servOk ? (res.servProposal.responseId ?? "").slice(0, 12) + "…" : "" },
+    { name: "Math gate", tone: !first ? "idle" : first.gatePassed ? "ok" : "no", note: !first ? "" : "needs +0.06%", det: first ? signed(first.pastWindowDeltaPct, 3) : "" },
+    { name: "Reppo review", tone: "idle", note: "off here", det: "" },
+  ];
+  const tone = res?.decision === "SHIP" ? "ok" : res?.decision === "REVIEW" ? "warn" : "no";
   return (
-    <section id="be-the-bot" className="p-proof-grid" style={{ marginTop: 0 }}>
-      <div>
-        <h2 className="p-h2">Be the bot.<br /><em>Pick your panic.</em></h2>
-        <div style={{ margin: "44px 0 30px" }}>
-          <div className="p-mono" style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "var(--desk-dim)", marginBottom: 14 }}>
-            <span>momentum {mom}%</span><span>reversal {100 - mom}%</span>
-          </div>
-          <input aria-label="Proposed momentum weight" className="p-range" type="range" min={0} max={100} step={5} value={mom} onChange={(e) => setMom(Number(e.target.value))} />
-          <div className="p-mono" style={{ fontSize: 12, color: "var(--desk-dim)", marginTop: 12 }}>today: 60% / 40%</div>
+    <Page>
+      <div className="a-head">
+        <div>
+          <h1>Open a request</h1>
         </div>
-        <button className="p-key" onClick={send} disabled={busy}>{busy ? "SERV is revising…" : "Send to Aptura"} <span className="arrow">→</span></button>
-        {err && <p className="p-mono" role="alert" style={{ color: "var(--stamp)", marginTop: 22, fontSize: 13 }}>{err}</p>}
       </div>
-      <div className="p-printer">
-        <div className="p-slot" aria-hidden />
-        <div className="p-feed" style={{ minHeight: 120 }}>
+      <div className="a-compose">
+        <div>
+          <div className="x-card">
+            <div className="a-req-head">
+              <div><b>judge-bot wants to change its mix</b><small>BONK / SOL</small></div>
+              <span className={`x-pill ${res ? tone : "neutral"}`}>{res ? (res.decision === "BLOCK" ? "Blocked" : res.decision === "REVIEW" ? "Needs review" : "Shipped") : phase === "running" ? "Checking" : "Draft"}</span>
+            </div>
+            <div className="a-diff a-mix">
+              <MixBar large label="Today" mix={{ momentum: 0.6, reversal: 0.4 }} animate={false} />
+              <MixBar large label="Wants" mix={{ momentum: mom / 100, reversal: 1 - mom / 100 }} animate={false} />
+            </div>
+            <div className="x-card-pad" style={{ borderTop: ".8px solid var(--line-soft)" }}>
+              <input aria-label="Momentum share you want" className="x-range" type="range" min={0} max={100} step={5} value={mom} onChange={(e) => setMom(Number(e.target.value))} />
+            </div>
+            <div className="x-card-foot" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <span style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <span className={`x-pill ${inside ? "ok" : "no"}`}>{inside ? "Inside 15–85%" : "Outside 15–85%"}</span>
+                <span className={`x-pill ${step <= 25 ? "ok" : "no"}`}>Step {step} pts</span>
+              </span>
+              <button className="x-btn sm" onClick={send} disabled={phase === "running"}>{phase === "running" ? "Checking…" : "Send request"}</button>
+            </div>
+          </div>
+          {err && <p className="x-down" role="alert" style={{ marginTop: 12, fontSize: 14 }}>{err}</p>}
           {res && (
-            <Receipt key={n} run head={[`№ ${res.requestId.slice(-6).toUpperCase()}`, utc(res.observedAtUtc)]} lines={lines} holes={2}
-              stamp={res.decision === "BLOCK" ? "BLOCKED" : res.decision} stampNote={res.decision === "BLOCK" ? "MATH GATE" : undefined} beatMs={120} />
+            <div className="a-tl" style={{ marginTop: 28 }}>
+              {res.rounds.map((r, i) => (
+                <div key={i} className="a-ev" style={{ ["--i" as string]: i * 2 }}>
+                  <span className={`a-ev-icon ${r.gatePassed ? "ok" : "no"}`}>{i === 0 ? "1" : <ArrowDown />}</span>
+                  <div className="a-ev-head"><b>{i === 0 ? "Your ask" : `SERV revision ${i}`}</b><span className="x-mute">{Math.round(r.weights.momentum * 100)} / {Math.round(r.weights.reversal * 100)}</span><span className={r.gatePassed ? "x-up" : "x-down"}>{signed(r.pastWindowDeltaPct, 3)}</span></div>
+                  <div className="a-ev-body"><p style={{ color: "var(--ink-2)" }}>{r.hypothesis}</p></div>
+                </div>
+              ))}
+              <div className="a-ev" style={{ ["--i" as string]: res.rounds.length * 2 }}>
+                <span className={`a-ev-icon ${tone}`}><Flag /></span>
+                <div className="a-ev-head"><b>Verdict</b></div>
+                <div className="a-ev-body"><div className={`a-final ${tone}`}>{res.decision === "BLOCK" ? "Blocked" : res.decision === "REVIEW" ? "Needs review" : "Shipped"}</div></div>
+              </div>
+            </div>
           )}
         </div>
+        <aside className="a-side">
+          <div className="x-card">
+            <div className="a-side-title"><span>Checks</span><span className="x-mute" style={{ fontWeight: 500, fontSize: 13 }}>{phase === "running" ? "running" : res ? "done" : ""}</span></div>
+            {checks.map((c, i) => (
+              <div className="a-check" key={c.name}>
+                {phase === "running" && i < 2 ? <span className="a-spin" aria-hidden /> : <StatusIcon tone={c.tone} />}
+                <span><b>{c.name}</b>{c.note && phase !== "running" && <small>{c.note}</small>}</span>
+                <span className="det" style={{ color: c.tone === "no" ? "var(--red-ink)" : c.tone === "ok" ? "var(--green-ink)" : "var(--mute)" }}>{c.det}</span>
+              </div>
+            ))}
+          </div>
+          <div className="x-card">
+            <div className="a-side-title"><span>Judge path</span></div>
+            {PATHS.map((p) => (
+              <Link key={p.h} href={p.href} className="a-check" style={{ gridTemplateColumns: "1fr auto" }}>
+                <span><b>{p.h}</b></span><span className="det x-mute">{p.min} min</span>
+              </Link>
+            ))}
+          </div>
+        </aside>
       </div>
-    </section>
-  );
-}
-
-export default function JudgePage() {
-  return (
-    <div className="p-page">
-      <PaperNav />
-      <main className="p-wrap">
-        <h1 className="p-display" style={{ marginTop: 50 }}>Six minutes.<br /><em>No sign-in.</em></h1>
-        <div className="p-stubs">
-          {STUBS.map((s) => (
-            <Link key={s.l} href={s.href} className="p-stub">
-              <div className="t"><b>{s.min}</b><span>MIN</span></div>
-              <div className="b"><span className="l">PATH {s.l}</span><h3>{s.h}</h3><code>{s.code}</code></div>
-            </Link>
-          ))}
-        </div>
-        <BeTheBot />
-      </main>
-      <div style={{ height: 100 }} />
-      <PaperFoot />
-    </div>
+    </Page>
   );
 }
