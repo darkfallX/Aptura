@@ -1,4 +1,4 @@
-"""Comprehensive test suite verifying all 12+ non-negotiable engineering safeguards in AGENTS.md."""
+"""Comprehensive test suite verifying all 12+ non-negotiable engineering safeguards."""
 
 from __future__ import annotations
 

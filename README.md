@@ -198,10 +198,6 @@ cd apps/web && npm install && npm run dev
 
 On Windows you can also run `./Start-Aptura.ps1`. The `/`, `/proof`, `/evaluation` and `/judge` pages read static files in `apps/web/public/proof`, so they work even without the API.
 
-## Demo
-
-A 3-minute script is in [SUBMISSION.md](SUBMISSION.md).
-
 ---
 
 ## For developers
@@ -211,7 +207,6 @@ apps/web/            Next.js 15 · landing, /requests, /requests/[id], /judge (t
 services/api/app/    FastAPI · strategies, supervisor, replay, SERV + Reppo clients, SQLite
 scripts/             run_evaluation.py, run_live_proof.py
 data/                datasets, evaluation results, proof receipts
-docs/                product spec, implementation status, design QA
 tests/               63 tests: replay, gates, providers (mocked), proof endpoints, revise loop, rate limit
 ```
 
